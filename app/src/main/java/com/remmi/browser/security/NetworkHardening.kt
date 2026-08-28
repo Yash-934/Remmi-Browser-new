@@ -184,7 +184,7 @@ object NetworkHardening {
     }
 
     // Always upgrade http to https unless .onion or internal
-    if (trimmed.startsWith("http://") && !trimmed.contains(".onion")) {
+    if (trimmed.startsWith("http://") && !NetworkRouteAuthority.isOnionDestination(trimmed)) {
       trimmed = trimmed.replaceFirst("http://", "https://")
     }
 

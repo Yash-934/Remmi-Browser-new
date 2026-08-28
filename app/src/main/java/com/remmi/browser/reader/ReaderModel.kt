@@ -57,18 +57,14 @@ data class ReaderArticle(
 object ReaderExtractor {
   private const val TAG = "ReaderExtractor"
 
-  private fun getClient(isGhost: Boolean): OkHttpClient {
-    val builder = OkHttpClient.Builder()
-      .connectTimeout(10, TimeUnit.SECONDS)
-      .readTimeout(15, TimeUnit.SECONDS)
-      .followRedirects(true)
-    if (isGhost) {
-      val port = CurrentTorRoute.currentSocksPort
-      if (port != null && port > 0) {
-        builder.proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
-      }
-    }
-    return builder.build()
+  private fun getClient(isGhost: Boolean, url: String? = null): OkHttpClient {
+    return com.remmi.browser.security.NetworkRouteAuthority.createHttpClient(
+      isGhost = isGhost,
+      targetUrl = url,
+      connectTimeoutSeconds = 10L,
+      readTimeoutSeconds = 15L,
+      followRedirects = true
+    )
   }
 
   /**
@@ -81,8 +77,8 @@ object ReaderExtractor {
       url.substringAfter("://").substringBefore('/')
     }
 
-    val isOnion = url.contains(".onion")
-    val client = getClient(isGhost || isOnion)
+    val isOnion = com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url)
+    val client = getClient(isGhost || isOnion, url)
 
     try {
       val request = Request.Builder()

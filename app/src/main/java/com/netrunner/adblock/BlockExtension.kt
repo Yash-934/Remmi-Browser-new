@@ -26,15 +26,48 @@ enum class ExtensionState {
 
 class BlockExtension private constructor(private val adblockBridge: AdblockBridge) : WebExtension.MessageDelegate {
 
-  var onThreatNeutralized: ((url: String, type: String) -> Unit)? = null
-  var onHtmlExtracted: ((url: String, html: String) -> Unit)? = null
-  var onClickInspected: ((candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit)? = null
+  // Thread-safe listener registries
+  private val threatListeners = java.util.concurrent.CopyOnWriteArraySet<(url: String, type: String) -> Unit>()
+  private val htmlListeners = java.util.concurrent.CopyOnWriteArraySet<(url: String, html: String) -> Unit>()
+  private val clickListeners = java.util.concurrent.CopyOnWriteArraySet<(candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit>()
+
+  // Legacy single-property compatibility with thread safety
+  var onThreatNeutralized: ((url: String, type: String) -> Unit)?
+    get() = threatListeners.firstOrNull()
+    set(value) {
+      threatListeners.clear()
+      if (value != null) threatListeners.add(value)
+    }
+
+  var onHtmlExtracted: ((url: String, html: String) -> Unit)?
+    get() = htmlListeners.firstOrNull()
+    set(value) {
+      htmlListeners.clear()
+      if (value != null) htmlListeners.add(value)
+    }
+
+  var onClickInspected: ((candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit)?
+    get() = clickListeners.firstOrNull()
+    set(value) {
+      clickListeners.clear()
+      if (value != null) clickListeners.add(value)
+    }
+
+  fun addThreatListener(listener: (url: String, type: String) -> Unit) = threatListeners.add(listener)
+  fun removeThreatListener(listener: (url: String, type: String) -> Unit) = threatListeners.remove(listener)
+
+  fun addHtmlListener(listener: (url: String, html: String) -> Unit) = htmlListeners.add(listener)
+  fun removeHtmlListener(listener: (url: String, html: String) -> Unit) = htmlListeners.remove(listener)
+
+  fun addClickListener(listener: (candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit) = clickListeners.add(listener)
+  fun removeClickListener(listener: (candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit) = clickListeners.remove(listener)
 
   private val _extensionState = MutableStateFlow(ExtensionState.NOT_REGISTERED)
   val extensionState: StateFlow<ExtensionState> = _extensionState.asStateFlow()
 
   @Volatile
   private var activePort: WebExtension.Port? = null
+  private val portLock = Any()
 
   fun setExtensionRegistered() {
     if (_extensionState.value == ExtensionState.NOT_REGISTERED) {
@@ -49,8 +82,10 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
 
   override fun onConnect(port: WebExtension.Port) {
     log("[WEBEXT] Native port connected: ${port.name}")
-    activePort = port
-    _extensionState.value = ExtensionState.CONNECTED
+    synchronized(portLock) {
+      activePort = port
+      _extensionState.value = ExtensionState.CONNECTED
+    }
 
     port.setDelegate(object : WebExtension.PortDelegate {
       override fun onPortMessage(message: Any, p: WebExtension.Port) {
@@ -79,18 +114,36 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
                 }
               }
               log("[WEBEXT] Click inspection received: ${candidatesList.size} candidates (hasOverlay=$hasOverlay, intercepted=$intercepted)")
-              onClickInspected?.invoke(candidatesList, hasOverlay, intercepted, pageUrl)
+              clickListeners.forEach { listener ->
+                try {
+                  listener(candidatesList, hasOverlay, intercepted, pageUrl)
+                } catch (e: Exception) {
+                  log("[WEBEXT] Click listener error: ${e.message}")
+                }
+              }
             }
             "BLOCKED", "blocked" -> {
               if (url.isNotEmpty()) {
                 log("[TRACKER] Neutralized: $url ($category)")
                 adblockBridge.totalBlockedCount.incrementAndGet()
-                onThreatNeutralized?.invoke(url, category)
+                threatListeners.forEach { listener ->
+                  try {
+                    listener(url, category)
+                  } catch (e: Exception) {
+                    log("[WEBEXT] Threat listener error: ${e.message}")
+                  }
+                }
               }
             }
             "EXTRACTED_HTML", "extracted_html" -> {
               val html = message.optString("html")
-              onHtmlExtracted?.invoke(url, html)
+              htmlListeners.forEach { listener ->
+                try {
+                  listener(url, html)
+                } catch (e: Exception) {
+                  log("[WEBEXT] Html listener error: ${e.message}")
+                }
+              }
             }
             "LOG", "log" -> {
               if (msgText.isNotEmpty()) {
@@ -108,9 +161,11 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
 
       override fun onDisconnect(p: WebExtension.Port) {
         log("[WEBEXT] Native port disconnected")
-        if (activePort == p) {
-          activePort = null
-          _extensionState.value = ExtensionState.DISCONNECTED
+        synchronized(portLock) {
+          if (activePort == p) {
+            activePort = null
+            _extensionState.value = ExtensionState.DISCONNECTED
+          }
         }
       }
     })
@@ -121,12 +176,14 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
       put("type", "EXTRACT_HTML")
       put("action", "extract_html")
     }
-    val currentPort = activePort
-    if (currentPort != null) {
-      try {
-        currentPort.postMessage(msg)
-      } catch (e: Exception) {
-        log("[WEBEXT] Could not send extract_html: ${e.message}")
+    synchronized(portLock) {
+      val currentPort = activePort
+      if (currentPort != null) {
+        try {
+          currentPort.postMessage(msg)
+        } catch (e: Exception) {
+          log("[WEBEXT] Could not send extract_html: ${e.message}")
+        }
       }
     }
   }

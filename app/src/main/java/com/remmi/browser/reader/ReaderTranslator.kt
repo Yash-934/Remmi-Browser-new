@@ -43,16 +43,12 @@ object ReaderTranslator {
   )
 
   private fun getClient(isGhost: Boolean): OkHttpClient {
-    val builder = OkHttpClient.Builder()
-      .connectTimeout(8, TimeUnit.SECONDS)
-      .readTimeout(10, TimeUnit.SECONDS)
-    if (isGhost) {
-      val port = com.remmi.browser.security.CurrentTorRoute.currentSocksPort
-      if (port != null && port > 0) {
-        builder.proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
-      }
-    }
-    return builder.build()
+    return com.remmi.browser.security.NetworkRouteAuthority.createHttpClient(
+      isGhost = isGhost,
+      connectTimeoutSeconds = 8L,
+      readTimeoutSeconds = 10L,
+      followRedirects = true
+    )
   }
 
   /**

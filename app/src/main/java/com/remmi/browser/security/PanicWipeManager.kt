@@ -252,6 +252,21 @@ object PanicWipeManager {
         deleteFileOrDir(context.codeCacheDir)
         deleteFileOrDir(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS))
 
+        // Scrub downloads created by the browser via MediaStore (API 29+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+          try {
+            val resolver = context.contentResolver
+            val deletedRows = resolver.delete(
+              android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+              "${android.provider.MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?",
+              arrayOf(context.packageName)
+            )
+            Log.d(TAG, "MediaStore owner-package download cleanup deleted $deletedRows rows")
+          } catch (e: Exception) {
+            Log.w(TAG, "MediaStore download scrub notice: ${e.message}")
+          }
+        }
+
         // Deep scrub temporary and backup artifacts across private storage
         val filesDir = context.filesDir
         if (filesDir != null && filesDir.exists()) {

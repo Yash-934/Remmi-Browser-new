@@ -63,6 +63,9 @@ fun extractDisplayDomain(url: String): String {
  * Returns the favicon URL for a given domain/URL.
  */
 fun getWebsiteFaviconUrl(url: String): String {
+  if (com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url)) {
+    return "" // Zero external clearnet leaks for Tor hidden services
+  }
   return try {
     val uri = Uri.parse(url)
     val host = uri.host?.removePrefix("www.") ?: url.split("/").firstOrNull() ?: url
