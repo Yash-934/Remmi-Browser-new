@@ -120,7 +120,10 @@ import com.remmi.browser.ui.components.CircuitVisualizerSheet
 import com.remmi.browser.ui.components.DownloadsDrawer
 import com.remmi.browser.ui.components.FindInPageBar
 import com.remmi.browser.ui.components.GlitchText
-import com.remmi.browser.ui.components.HistoryBookmarksSheet
+import com.remmi.browser.ui.components.ActivityScreen
+import com.remmi.browser.ui.components.ActivityViewModel
+import com.remmi.browser.ui.components.ActivityViewModelFactory
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remmi.browser.ui.components.HudOverlay
 import com.remmi.browser.ui.components.ImagePreviewDialog
 import com.remmi.browser.ui.components.NewTabPage
@@ -190,6 +193,9 @@ fun BrowserScreen(
   val fillPrompt by autofillHelper.fillPrompt.collectAsState()
 
   val activeTab = tabs.getOrNull(activeTabIndex) ?: tabs.firstOrNull() ?: BrowserTab()
+  val activityViewModel: ActivityViewModel = viewModel(
+    factory = ActivityViewModelFactory(database.historyDao(), database.bookmarkDao())
+  )
 
   LaunchedEffect(
     settings.dnsProvider,
@@ -1804,61 +1810,13 @@ fun BrowserScreen(
       containerColor = ThemeCyber.colors.background,
       dragHandle = null,
     ) {
-      HistoryBookmarksSheet(
+      ActivityScreen(
+        viewModel = activityViewModel,
         initialTab = historyBookmarksInitialTab,
-        historyList = historyList,
-        bookmarksList = bookmarksList,
         onSelectUrl = { url ->
           tabManager.updateTab(activeTab.id) { it.copy(url = url, isReaderMode = false, readerArticle = null) }
         },
-        onDeleteHistory = { item ->
-          scope.launch(Dispatchers.IO) {
-            database.historyDao().delete(item)
-          }
-        },
-        onClearAllHistory = {
-          scope.launch(Dispatchers.IO) {
-            database.historyDao().clearHistory()
-          }
-        },
-        onDeleteBookmark = { bm ->
-          scope.launch(Dispatchers.IO) {
-            database.bookmarkDao().delete(bm)
-          }
-        },
-        onAddBookmark = {
-          scope.launch(Dispatchers.IO) {
-            val bm = BookmarkItem(url = activeTab.url, title = activeTab.title, timestamp = System.currentTimeMillis())
-            database.bookmarkDao().insert(bm)
-          }
-          android.widget.Toast.makeText(context, "Added to Bookmarks", android.widget.Toast.LENGTH_SHORT).show()
-        },
-        onSaveToReadingList = {
-          android.widget.Toast.makeText(context, "Saved to Reading List", android.widget.Toast.LENGTH_SHORT).show()
-        },
-        onCreateCollection = {
-          android.widget.Toast.makeText(context, "Collection feature coming soon", android.widget.Toast.LENGTH_SHORT).show()
-        },
-        onSyncStatus = {
-          android.widget.Toast.makeText(context, "Syncing data...", android.widget.Toast.LENGTH_SHORT).show()
-        },
-        onShareUrl = { url ->
-          val sendIntent: android.content.Intent = android.content.Intent().apply {
-            action = android.content.Intent.ACTION_SEND
-            putExtra(android.content.Intent.EXTRA_TEXT, url)
-            type = "text/plain"
-          }
-          val shareIntent = android.content.Intent.createChooser(sendIntent, null)
-          context.startActivity(shareIntent)
-        },
-        onAddHistoryItemToBookmark = { item ->
-          scope.launch(Dispatchers.IO) {
-            val bm = BookmarkItem(url = item.url, title = item.title, timestamp = System.currentTimeMillis())
-            database.bookmarkDao().insert(bm)
-          }
-          android.widget.Toast.makeText(context, "Saved history item to Bookmarks", android.widget.Toast.LENGTH_SHORT).show()
-        },
-        onDismiss = { showHistoryBookmarksSheet = false },
+        onDismiss = { showHistoryBookmarksSheet = false }
       )
     }
   }

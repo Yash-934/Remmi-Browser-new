@@ -479,6 +479,51 @@ fun TabGridSheet(
           )
         }
 
+        // Quick Tor Tab
+        OutlinedButton(
+          onClick = {
+            onNewTab(PrivacyProfile.GHOST, null)
+            onDismiss()
+          },
+          border = BorderStroke(1.dp, ThemeCyber.colors.torPurple.copy(alpha = 0.6f)),
+          colors = ButtonDefaults.outlinedButtonColors(containerColor = ThemeCyber.colors.torPurple.copy(alpha = 0.08f)),
+          shape = RoundedCornerShape(10.dp),
+          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Default.VpnKey,
+            contentDescription = "New Tor Tab",
+            tint = ThemeCyber.colors.torPurple,
+            modifier = Modifier.size(14.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Tor",
+            fontSize = 12.sp,
+            color = ThemeCyber.colors.torPurple,
+            fontWeight = FontWeight.Bold
+          )
+        }
+      }
+
+      // Close All Tabs Action
+      TextButton(
+        onClick = {
+          onCloseAllTabs()
+          onDismiss()
+        },
+        colors = ButtonDefaults.textButtonColors(contentColor = ThemeCyber.colors.dangerRed)
+      ) {
+        Text(
+          text = "Close All",
+          fontSize = 12.5.sp,
+          fontWeight = FontWeight.Bold
+        )
+      }
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
     // 3. MAIN SCROLLABLE CONTENT (SPACES + CHIPS + TABS)
     LazyColumn(
       modifier = Modifier
@@ -518,183 +563,66 @@ fun TabGridSheet(
               )
             }
           }
-
           Spacer(modifier = Modifier.height(8.dp))
-
-          // Spaces Horizontal Scroll Cards
           LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth()
+            contentPadding = PaddingValues(horizontal = 2.dp)
           ) {
-            // 1. Personal Space Card
             item {
               SpaceCard(
                 title = "Personal Space",
+                icon = { Icon(Icons.Default.Person, contentDescription = null, tint = ThemeCyber.colors.primary, modifier = Modifier.size(16.dp)) },
                 count = personalTabs.size,
+                accentColor = ThemeCyber.colors.primary,
                 isSelected = selectedSpaceFilter == "personal",
-                icon = {
-                  Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(24.dp)
-                  )
-                },
-                accentColor = Color(0xFF007AFF),
-                onClick = {
-                  selectedSpaceFilter = if (selectedSpaceFilter == "personal") null else "personal"
-                }
+                onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "personal") null else "personal" }
               )
             }
-
-            // 2. Incognito Space Card
             item {
               SpaceCard(
                 title = "Incognito Space",
+                icon = { Icon(painterResource(R.drawable.ic_incognito), contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(16.dp)) },
                 count = incognitoTabs.size,
-                isSelected = selectedSpaceFilter == "incognito",
-                icon = {
-                  Icon(
-                    painter = painterResource(R.drawable.ic_incognito),
-                    contentDescription = null,
-                    tint = Color(0xFF8E8E93),
-                    modifier = Modifier.size(22.dp)
-                  )
-                },
                 accentColor = Color(0xFF8E8E93),
-                onClick = {
-                  selectedSpaceFilter = if (selectedSpaceFilter == "incognito") null else "incognito"
-                }
+                isSelected = selectedSpaceFilter == "incognito",
+                onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "incognito") null else "incognito" }
               )
             }
-
-            // 3. Tor Space Card
             item {
               SpaceCard(
                 title = "Tor Space",
+                icon = { Icon(Icons.Default.VpnKey, contentDescription = null, tint = ThemeCyber.colors.torPurple, modifier = Modifier.size(16.dp)) },
                 count = torTabs.size,
-                isSelected = selectedSpaceFilter == "tor",
-                icon = {
-                  Icon(
-                    imageVector = Icons.Default.VpnKey,
-                    contentDescription = null,
-                    tint = ThemeCyber.colors.torPurple,
-                    modifier = Modifier.size(22.dp)
-                  )
-                },
                 accentColor = ThemeCyber.colors.torPurple,
-                onClick = {
-                  selectedSpaceFilter = if (selectedSpaceFilter == "tor") null else "tor"
-                }
+                isSelected = selectedSpaceFilter == "tor",
+                onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "tor") null else "tor" }
               )
             }
-
-            // 4. Custom User Groups / Spaces
-            items(tabGroups, key = { it.id }) { group ->
-              val groupCount = tabs.count { it.groupId == group.id }
-              val groupColor = Color(group.colorHex)
+            items(tabGroups, key = { "group_${it.id}" }) { group ->
+              val groupTabsCount = tabs.count { it.groupId == group.id }
               SpaceCard(
                 title = group.title,
-                count = groupCount,
+                icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = Color(group.colorHex), modifier = Modifier.size(16.dp)) },
+                count = groupTabsCount,
+                accentColor = Color(group.colorHex),
                 isSelected = selectedSpaceFilter == group.id,
-                icon = {
-                  Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = null,
-                    tint = groupColor,
-                    modifier = Modifier.size(24.dp)
-                  )
-                },
-                accentColor = groupColor,
-                onClick = {
-                  selectedSpaceFilter = if (selectedSpaceFilter == group.id) null else group.id
-                },
-                onLongClick = { editingGroup = group }
+                onClick = { selectedSpaceFilter = if (selectedSpaceFilter == group.id) null else group.id }
               )
-            }
-
-            // 5. + New Space Card
-            item {
-              Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = ThemeCyber.colors.surfaceLight,
-                border = BorderStroke(1.2.dp, ThemeCyber.colors.primary.copy(alpha = 0.35f)),
-                modifier = Modifier
-                  .width(105.dp)
-                  .height(84.dp)
-                  .clickable { showCreateGroupDialog = true }
-              ) {
-                Column(
-                  modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally,
-                  verticalArrangement = Arrangement.Center
-                ) {
-                  Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New Space",
-                    tint = ThemeCyber.colors.primary,
-                    modifier = Modifier.size(22.dp)
-                  )
-                  Spacer(modifier = Modifier.height(4.dp))
-                  Text(
-                    text = "+ New Space",
-                    color = ThemeCyber.colors.primary,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                  )
-                }
-              }
             }
           }
         }
       }
 
-      // FILTER CHIPS ROW (All, Recent, Active, Sleep)
+      // FILTERS SECTION
       item {
         LazyRow(
           horizontalArrangement = Arrangement.spacedBy(8.dp),
-          modifier = Modifier.fillMaxWidth()
+          contentPadding = PaddingValues(horizontal = 2.dp)
         ) {
-          item {
-            ModernFilterChip(
-              title = "All",
-              count = tabs.size,
-              icon = Icons.Default.GridView,
-              isSelected = selectedFilter == TabFilter.ALL,
-              onClick = { selectedFilter = TabFilter.ALL }
-            )
-          }
-          item {
-            ModernFilterChip(
-              title = "Recent",
-              icon = Icons.Default.Schedule,
-              isSelected = selectedFilter == TabFilter.RECENT,
-              onClick = { selectedFilter = TabFilter.RECENT }
-            )
-          }
-          item {
-            ModernFilterChip(
-              title = "Active",
-              count = activeOnlyTabs.size,
-              icon = Icons.Default.CheckCircle,
-              colorAccent = ThemeCyber.colors.successGreen,
-              isSelected = selectedFilter == TabFilter.ACTIVE,
-              onClick = { selectedFilter = TabFilter.ACTIVE }
-            )
-          }
-          item {
-            ModernFilterChip(
-              title = "Sleep",
-              count = inactiveTabs.size,
-              icon = Icons.Default.Bedtime,
-              colorAccent = ThemeCyber.colors.warningYellow,
-              isSelected = selectedFilter == TabFilter.INACTIVE,
-              onClick = { selectedFilter = TabFilter.INACTIVE }
-            )
-          }
+          item { ModernFilterChip("All", count = tabs.size, icon = Icons.Default.GridView, isSelected = selectedFilter == TabFilter.ALL) { selectedFilter = TabFilter.ALL } }
+          item { ModernFilterChip("Recent", icon = Icons.Default.Schedule, isSelected = selectedFilter == TabFilter.RECENT) { selectedFilter = TabFilter.RECENT } }
+          item { ModernFilterChip("Active", count = activeOnlyTabs.size, icon = Icons.Default.CheckCircle, isSelected = selectedFilter == TabFilter.ACTIVE) { selectedFilter = TabFilter.ACTIVE } }
+          item { ModernFilterChip("Sleep", count = inactiveTabs.size, icon = Icons.Default.NightlightRound, isSelected = selectedFilter == TabFilter.INACTIVE) { selectedFilter = TabFilter.INACTIVE } }
         }
       }
 
@@ -731,69 +659,18 @@ fun TabGridSheet(
               )
             }
           }
-
-          if (tabs.isNotEmpty()) {
+          TextButton(
+            onClick = {
+              onCloseAllTabs()
+              onDismiss()
+            },
+            colors = ButtonDefaults.textButtonColors(contentColor = ThemeCyber.colors.dangerRed)
+          ) {
             Text(
               text = "Close All",
-              color = ThemeCyber.colors.dangerRed,
-              fontSize = 12.sp,
-              fontWeight = FontWeight.SemiBold,
-              modifier = Modifier
-                .clickable {
-                  onCloseAllTabs()
-                  onDismiss()
-                }
-                .padding(4.dp)
+              fontSize = 12.5.sp,
+              fontWeight = FontWeight.Bold
             )
-          }
-        }
-      }
-
-      // INACTIVE SLEEP BANNER (when viewing sleep filter)
-      if (selectedFilter == TabFilter.INACTIVE && inactiveTabs.isNotEmpty()) {
-        item {
-          Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = ThemeCyber.colors.surfaceLight,
-            border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Column(modifier = Modifier.weight(1f)) {
-                Text(
-                  text = "💤 Dormant / Sleeping Tabs",
-                  color = ThemeCyber.colors.textPrimary,
-                  fontSize = 12.5.sp,
-                  fontWeight = FontWeight.Bold,
-                )
-                Text(
-                  text = "Unloaded to save battery and RAM.",
-                  color = ThemeCyber.colors.textMuted,
-                  fontSize = 10.5.sp,
-                )
-              }
-              Button(
-                onClick = onCloseAllInactiveTabs,
-                colors = ButtonDefaults.buttonColors(
-                  containerColor = ThemeCyber.colors.dangerRed.copy(alpha = 0.2f),
-                  contentColor = ThemeCyber.colors.dangerRed
-                ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-              ) {
-                Text(
-                  text = "Close All",
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.Bold
-                )
-              }
-            }
           }
         }
       }
@@ -811,7 +688,6 @@ fun TabGridSheet(
               val isActive = originalIndex == activeIndex
               val group = tabGroups.find { it.id == tab.groupId }
               val groupColor = group?.let { Color(it.colorHex) }
-
               Box(modifier = Modifier.weight(1f)) {
                 ModernTabCard(
                   tab = tab,
@@ -858,50 +734,6 @@ fun TabGridSheet(
             }
           }
         }
-      }
-    }
-
-
-        // Quick Tor Tab
-        OutlinedButton(
-          onClick = {
-            onNewTab(PrivacyProfile.GHOST, null)
-            onDismiss()
-          },
-          border = BorderStroke(1.dp, ThemeCyber.colors.torPurple.copy(alpha = 0.6f)),
-          colors = ButtonDefaults.outlinedButtonColors(containerColor = ThemeCyber.colors.torPurple.copy(alpha = 0.08f)),
-          shape = RoundedCornerShape(10.dp),
-          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-          Icon(
-            imageVector = Icons.Default.VpnKey,
-            contentDescription = "New Tor Tab",
-            tint = ThemeCyber.colors.torPurple,
-            modifier = Modifier.size(14.dp)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Tor",
-            fontSize = 12.sp,
-            color = ThemeCyber.colors.torPurple,
-            fontWeight = FontWeight.Bold
-          )
-        }
-      }
-
-      // Close All Tabs Action
-      TextButton(
-        onClick = {
-          onCloseAllTabs()
-          onDismiss()
-        },
-        colors = ButtonDefaults.textButtonColors(contentColor = ThemeCyber.colors.dangerRed)
-      ) {
-        Text(
-          text = "Close All",
-          fontSize = 12.5.sp,
-          fontWeight = FontWeight.Bold
-        )
       }
     }
   }

@@ -128,6 +128,9 @@ interface HistoryDao {
   @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT 200")
   fun getAllHistory(): Flow<List<HistoryItem>>
 
+  @Query("SELECT * FROM history WHERE (:query = '' OR title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%') AND timestamp >= :minTimestamp AND timestamp <= :maxTimestamp ORDER BY timestamp DESC")
+  fun getFilteredHistory(query: String, minTimestamp: Long, maxTimestamp: Long): Flow<List<HistoryItem>>
+
   @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT 50")
   suspend fun getRecentHistory(): List<HistoryItem>
 
@@ -151,6 +154,9 @@ interface HistoryDao {
 interface BookmarkDao {
   @Query("SELECT * FROM bookmarks ORDER BY timestamp DESC")
   fun getAllBookmarks(): Flow<List<BookmarkItem>>
+
+  @Query("SELECT * FROM bookmarks WHERE category = :folder ORDER BY timestamp DESC")
+  fun getBookmarksByCategory(folder: String): Flow<List<BookmarkItem>>
 
   @Query("SELECT * FROM bookmarks WHERE url LIKE '%' || :query || '%' OR title LIKE '%' || :query || '%' ORDER BY timestamp DESC LIMIT 10")
   suspend fun searchBookmarks(query: String): List<BookmarkItem>

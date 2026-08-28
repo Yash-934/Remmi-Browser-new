@@ -66,8 +66,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 fun getFaviconUrl(url: String): String {
-  // Zero external clearnet leaks for visited domains
-  return ""
+  return try {
+    val uri = android.net.Uri.parse(url)
+    val host = uri.host ?: return ""
+    "https://www.google.com/s2/favicons?domain=${host}&sz=128"
+  } catch (e: Exception) {
+    ""
+  }
 }
 
 @Composable
