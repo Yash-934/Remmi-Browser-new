@@ -1,0 +1,1 @@
+sed -i 's/    prefs.edit().putString("default_profile", profile.name).apply()/  fun updateDefaultProfile(profile: PrivacyProfile) {\n    prefs.edit().putString("default_profile", profile.name).apply()/g' app/src/main/java/com/remmi/browser/storage/SettingsRepository.kt

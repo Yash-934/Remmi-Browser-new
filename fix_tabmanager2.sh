@@ -1,0 +1,3 @@
+sed -i 's/fun incrementTrackerCount(tabId: String, amount: Int = 1) {/fun incrementTrackerCount(tabId: String, blockedDomain: String) {/g' app/src/main/java/com/remmi/browser/engine/TabManager.kt
+sed -i 's/updateTab(tabId) { it.copy(blockedTrackersCount = it.blockedTrackersCount + amount) }/updateTab(tabId) { it.copy(blockedTrackersCount = it.blockedTrackersCount + 1, blockedLog = it.blockedLog + blockedDomain) }/g' app/src/main/java/com/remmi/browser/engine/TabManager.kt
+sed -i 's/import java.util.UUID/import java.util.UUID\nimport com.remmi.browser.storage.TabEntity/g' app/src/main/java/com/remmi/browser/engine/TabManager.kt
