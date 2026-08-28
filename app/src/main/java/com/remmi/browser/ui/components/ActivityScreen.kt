@@ -32,13 +32,20 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import com.remmi.browser.R
 import com.remmi.browser.storage.BookmarkItem
 import com.remmi.browser.storage.HistoryItem
 import com.remmi.browser.ui.theme.ThemeCyber
@@ -1735,15 +1742,18 @@ fun BookmarkCardItem(
     }
 }
 
-// --- Brand Favicon Badge (Zero-network local rendering) ---
+// --- Brand Favicon Badge (High-res favicon with smart fallback) ---
 @Composable
 fun BrandFaviconBadge(
     url: String,
     domain: String,
     isInternal: Boolean
 ) {
+    val context = LocalContext.current
     val lowerDomain = domain.lowercase()
     val lowerUrl = url.lowercase()
+
+    val isTorSite = lowerDomain.contains("torproject.org") || lowerUrl.contains("torproject.org")
 
     val (bgColor, textColor, labelOrIcon) = when {
         isInternal || lowerUrl.startsWith("about:") -> Triple(Color(0xFF2563EB), Color.White, "🌐")
@@ -1769,18 +1779,72 @@ fun BrandFaviconBadge(
         }
     }
 
+    val faviconUrl = remember(url) { getFaviconUrl(url) }
+
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = bgColor,
+        color = bgColor.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, bgColor.copy(alpha = 0.35f)),
         modifier = Modifier.size(38.dp)
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = labelOrIcon,
-                color = textColor,
-                fontSize = if (labelOrIcon == "🌐" || labelOrIcon == "▶") 16.sp else 18.sp,
-                fontWeight = FontWeight.Black
-            )
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            if (isTorSite) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_tor),
+                    contentDescription = null,
+                    tint = ThemeCyber.colors.torPurple,
+                    modifier = Modifier.size(22.dp)
+                )
+            } else if (isInternal || lowerUrl.startsWith("about:")) {
+                Text(
+                    text = "🌐",
+                    fontSize = 18.sp
+                )
+            } else if (faviconUrl.isNotEmpty()) {
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(faviconUrl)
+                        .crossfade(true)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .build(),
+                    contentDescription = domain,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Fit,
+                    loading = {
+                        Text(
+                            text = labelOrIcon,
+                            color = bgColor,
+                            fontSize = if (labelOrIcon == "▶") 14.sp else 16.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    },
+                    error = {
+                        Text(
+                            text = labelOrIcon,
+                            color = bgColor,
+                            fontSize = if (labelOrIcon == "▶") 14.sp else 16.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    },
+                    success = {
+                        SubcomposeAsyncImageContent(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                        )
+                    }
+                )
+            } else {
+                Text(
+                    text = labelOrIcon,
+                    color = bgColor,
+                    fontSize = if (labelOrIcon == "🌐" || labelOrIcon == "▶") 14.sp else 16.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
         }
     }
 }

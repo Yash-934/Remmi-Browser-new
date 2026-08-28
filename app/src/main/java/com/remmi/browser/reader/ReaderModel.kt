@@ -196,9 +196,7 @@ object ReaderExtractor {
             return@withTimeout createFallbackArticle(url, currentTitle, domain, "Empty page response")
           }
 
-          val source = responseBody.source()
-          val bytes = source.readByteArray(MAX_RESPONSE_BYTES)
-          val html = String(bytes, Charsets.UTF_8)
+          val html = responseBody.string()
 
           if (html.isBlank()) {
             return@withTimeout createFallbackArticle(url, currentTitle, domain, "Empty page response")
@@ -307,10 +305,38 @@ object ReaderExtractor {
     }
 
     if (paragraphs.isEmpty()) {
-      val backup = doc.body().text().trim()
-      if (backup.isNotBlank()) {
-        paragraphs.add(ReaderParagraph(0, backup))
-        rawList.add(backup)
+      val elements = doc.body().select("p, h1, h2, h3, h4, h5, h6, li, blockquote, div")
+      var idx = 0
+      for (el in elements) {
+        val txt = el.ownText().trim()
+        if (txt.length > 20 && !rawList.contains(txt)) {
+          val isHeading = el.tagName().startsWith("h", ignoreCase = true)
+          val headingLevel = if (isHeading) el.tagName().substring(1).toIntOrNull() ?: 2 else 0
+          paragraphs.add(
+            ReaderParagraph(
+              index = idx++,
+              text = txt,
+              isHeading = isHeading,
+              headingLevel = headingLevel
+            )
+          )
+          rawList.add(txt)
+        }
+      }
+      if (paragraphs.isEmpty()) {
+        val backup = doc.body().text().trim()
+        if (backup.isNotBlank()) {
+          val fallbackChunks = backup.split(Regex("\n+")).filter { it.trim().length > 15 }
+          if (fallbackChunks.isNotEmpty()) {
+            fallbackChunks.forEachIndexed { fIdx, fChunk ->
+              paragraphs.add(ReaderParagraph(fIdx, fChunk.trim()))
+              rawList.add(fChunk.trim())
+            }
+          } else {
+            paragraphs.add(ReaderParagraph(0, backup))
+            rawList.add(backup)
+          }
+        }
       }
     }
 

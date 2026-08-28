@@ -60,6 +60,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.remmi.browser.R
 import com.remmi.browser.security.ClipboardManager
@@ -82,7 +85,17 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 fun getFaviconUrl(url: String): String {
-  return ""
+  if (url.isBlank()) return ""
+  return try {
+    val cleanUrl = if (!url.startsWith("http://") && !url.startsWith("https://")) "https://$url" else url
+    val uri = Uri.parse(cleanUrl)
+    val host = uri.host?.removePrefix("www.") ?: return ""
+    if (host.isBlank()) return ""
+    // Google S2 Favicon service provides high-res 128px official site icons
+    "https://www.google.com/s2/favicons?domain=$host&sz=128"
+  } catch (e: Exception) {
+    ""
+  }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -864,7 +877,7 @@ fun NewTabPage(
 
             // 5. Tor Privacy Network / Onion Mode
             QuickActionItem(
-              icon = Icons.Default.VpnKey,
+              painter = painterResource(R.drawable.ic_tor),
               label = "Tor",
               isLight = isLight,
               accentColor = Color(0xFFA855F7),
@@ -1347,7 +1360,8 @@ fun NewTabPage(
  */
 @Composable
 private fun QuickActionItem(
-  icon: ImageVector,
+  icon: ImageVector? = null,
+  painter: androidx.compose.ui.graphics.painter.Painter? = null,
   label: String,
   isLight: Boolean,
   accentColor: Color,
@@ -1377,12 +1391,21 @@ private fun QuickActionItem(
         ),
       contentAlignment = Alignment.Center
     ) {
-      Icon(
-        imageVector = icon,
-        contentDescription = label,
-        tint = accentColor,
-        modifier = Modifier.size(20.dp)
-      )
+      if (painter != null) {
+        Icon(
+          painter = painter,
+          contentDescription = label,
+          tint = accentColor,
+          modifier = Modifier.size(20.dp)
+        )
+      } else if (icon != null) {
+        Icon(
+          imageVector = icon,
+          contentDescription = label,
+          tint = accentColor,
+          modifier = Modifier.size(20.dp)
+        )
+      }
     }
 
     Spacer(modifier = Modifier.height(6.dp))
@@ -1417,6 +1440,11 @@ private fun FavoriteTile(
   val faviconUrl = remember(item.url) { getFaviconUrl(item.url) }
   val initialLetter = remember(item.title) {
     item.title.trim().firstOrNull()?.uppercase() ?: "W"
+  }
+
+  // Check if it's Tor Project
+  val isTorSite = remember(item.url, item.id) {
+    item.url.contains("torproject.org") || item.id.equals("tor", ignoreCase = true)
   }
 
   // Consistent background color for domain letter placeholder
@@ -1459,24 +1487,71 @@ private fun FavoriteTile(
           modifier = Modifier.fillMaxSize(),
           contentAlignment = Alignment.Center
         ) {
-          if (faviconUrl.isNotEmpty()) {
-            AsyncImage(
+          if (isTorSite) {
+            Icon(
+              painter = painterResource(R.drawable.ic_tor),
+              contentDescription = item.title,
+              tint = ThemeCyber.colors.torPurple,
+              modifier = Modifier.size(28.dp)
+            )
+          } else if (faviconUrl.isNotEmpty()) {
+            SubcomposeAsyncImage(
               model = ImageRequest.Builder(context)
                 .data(faviconUrl)
                 .crossfade(true)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .memoryCachePolicy(CachePolicy.ENABLED)
                 .build(),
               contentDescription = item.title,
               modifier = Modifier
-                .size(28.dp)
+                .size(30.dp)
                 .clip(RoundedCornerShape(6.dp)),
               contentScale = ContentScale.Fit,
-              error = painterResource(id = R.drawable.remmi_logo)
+              loading = {
+                Box(
+                  modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(tileAccentColor.copy(alpha = 0.18f)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text(
+                    text = initialLetter,
+                    color = tileAccentColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                  )
+                }
+              },
+              error = {
+                Box(
+                  modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(tileAccentColor.copy(alpha = 0.18f)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text(
+                    text = initialLetter,
+                    color = tileAccentColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                  )
+                }
+              },
+              success = {
+                SubcomposeAsyncImageContent(
+                  modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                )
+              }
             )
           } else {
             // Letter Placeholder
             Box(
               modifier = Modifier
-                .size(32.dp)
+                .size(30.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(tileAccentColor.copy(alpha = 0.18f)),
               contentAlignment = Alignment.Center
@@ -1485,7 +1560,7 @@ private fun FavoriteTile(
                 text = initialLetter,
                 color = tileAccentColor,
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
+                fontSize = 14.sp
               )
             }
           }

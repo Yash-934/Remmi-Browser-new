@@ -1175,6 +1175,9 @@ fun BrowserScreen(
               )
             }
 
+            val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+            val maxDropdownMenuHeight = screenHeight * 0.70f
+
             DropdownMenu(
               expanded = showMenuDropdown,
               onDismissRequest = { showMenuDropdown = false },
@@ -1183,7 +1186,8 @@ fun BrowserScreen(
               border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder.copy(alpha = 0.7f)),
               scrollState = rememberScrollState(),
               modifier = Modifier
-                .widthIn(min = 230.dp, max = 280.dp)
+                .widthIn(min = 240.dp, max = 290.dp)
+                .heightIn(max = maxDropdownMenuHeight)
             ) {
               // Section 1: Display & Navigation
               // Full View (Fullscreen) Mode

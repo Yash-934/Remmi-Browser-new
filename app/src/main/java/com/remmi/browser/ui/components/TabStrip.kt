@@ -134,7 +134,14 @@ fun TabStrip(
             Spacer(modifier = Modifier.width(5.dp))
           }
 
-          if (tab.profile == PrivacyProfile.GHOST || tab.profile == PrivacyProfile.INCOGNITO) {
+          if (tab.profile == PrivacyProfile.INCOGNITO) {
+            Icon(
+              painter = painterResource(R.drawable.ic_incognito),
+              contentDescription = "Incognito Tab",
+              tint = if (isActive) textPrimary else textSecondary,
+              modifier = Modifier.size(13.dp),
+            )
+          } else if (tab.profile == PrivacyProfile.GHOST) {
             Icon(
               painter = painterResource(R.drawable.ic_tor),
               contentDescription = "Tor Tab",
@@ -278,7 +285,8 @@ fun TabGridSheet(
 
   // Dynamic Tab Sets & Counts
   val personalTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.SHIELD && it.groupId == null } }
-  val torTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.GHOST || it.profile == PrivacyProfile.INCOGNITO } }
+  val incognitoTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.INCOGNITO } }
+  val torTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.GHOST } }
   val inactiveTabs = remember(tabs) { tabs.filter { it.isInactive } }
   val activeOnlyTabs = remember(tabs) { tabs.filter { !it.isInactive } }
 
@@ -286,6 +294,7 @@ fun TabGridSheet(
   val filteredTabs = remember(tabs, selectedFilter, selectedSpaceFilter, searchQuery) {
     var list = when (selectedSpaceFilter) {
       "personal" -> personalTabs
+      "incognito" -> incognitoTabs
       "tor" -> torTabs
       null -> tabs
       else -> tabs.filter { it.groupId == selectedSpaceFilter }
@@ -572,53 +581,64 @@ fun TabGridSheet(
 
     Spacer(modifier = Modifier.height(10.dp))
 
-    // 3. QUICK CONTROLS ([ Incognito ] [ Tor ]    Close All)
+    // 3. QUICK CONTROLS ([ Incognito ] [ Tor ])
     Row(
       modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // [ Tor ] Pill Button
-        OutlinedButton(
-          onClick = {
-            onNewTab(PrivacyProfile.GHOST, null)
-            onDismiss()
-          },
-          border = BorderStroke(1.dp, torPurple.copy(alpha = 0.6f)),
-          colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = torPurple.copy(alpha = if (isDark) 0.15f else 0.10f)
-          ),
-          shape = RoundedCornerShape(12.dp),
-          contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-        ) {
-          Icon(
-            painter = painterResource(R.drawable.ic_tor),
-            contentDescription = "New Tor Tab",
-            tint = torPurple,
-            modifier = Modifier.size(16.dp)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Tor",
-            fontSize = 12.5.sp,
-            color = torPurple,
-            fontWeight = FontWeight.Bold
-          )
-        }
-      }
-
-      // Close All Action in red text
-      TextButton(
+      // [ Incognito ] Pill Button
+      OutlinedButton(
         onClick = {
-          onCloseAllTabs()
+          onNewTab(PrivacyProfile.INCOGNITO, null)
           onDismiss()
         },
-        colors = ButtonDefaults.textButtonColors(contentColor = dangerRed)
+        border = BorderStroke(1.dp, borderColor),
+        colors = ButtonDefaults.outlinedButtonColors(
+          containerColor = surfaceCardColor
+        ),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
       ) {
+        Icon(
+          painter = painterResource(R.drawable.ic_incognito),
+          contentDescription = "New Incognito Tab",
+          tint = textPrimary,
+          modifier = Modifier.size(15.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
         Text(
-          text = "Close All",
-          fontSize = 13.sp,
+          text = "Incognito",
+          fontSize = 12.5.sp,
+          color = textPrimary,
+          fontWeight = FontWeight.Medium
+        )
+      }
+
+      // [ Tor ] Pill Button
+      OutlinedButton(
+        onClick = {
+          onNewTab(PrivacyProfile.GHOST, null)
+          onDismiss()
+        },
+        border = BorderStroke(1.dp, torPurple.copy(alpha = 0.6f)),
+        colors = ButtonDefaults.outlinedButtonColors(
+          containerColor = torPurple.copy(alpha = if (isDark) 0.15f else 0.10f)
+        ),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+      ) {
+        Icon(
+          painter = painterResource(R.drawable.ic_tor),
+          contentDescription = "New Tor Tab",
+          tint = torPurple,
+          modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+          text = "Tor",
+          fontSize = 12.5.sp,
+          color = torPurple,
           fontWeight = FontWeight.Bold
         )
       }
@@ -682,6 +702,17 @@ fun TabGridSheet(
                 accentColor = activeAccentColor,
                 isSelected = selectedSpaceFilter == "personal",
                 onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "personal") null else "personal" }
+              )
+            }
+            // Incognito Space
+            item {
+              SpaceCard(
+                title = "Incognito Space",
+                icon = { Icon(painterResource(R.drawable.ic_incognito), contentDescription = null, tint = textSecondary, modifier = Modifier.size(18.dp)) },
+                count = incognitoTabs.size,
+                accentColor = textSecondary,
+                isSelected = selectedSpaceFilter == "incognito",
+                onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "incognito") null else "incognito" }
               )
             }
             // Tor Space
@@ -1553,7 +1584,8 @@ private fun ModernTabCard(
             // Security Badge: Shield / Incognito / Tor
             Row(verticalAlignment = Alignment.CenterVertically) {
               val profileLabel = when (tab.profile) {
-                PrivacyProfile.GHOST, PrivacyProfile.INCOGNITO -> "Tor"
+                PrivacyProfile.GHOST -> "Tor"
+                PrivacyProfile.INCOGNITO -> "Incognito"
                 else -> "Shield"
               }
               Text(
