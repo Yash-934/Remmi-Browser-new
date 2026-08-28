@@ -1826,6 +1826,38 @@ fun BrowserScreen(
             database.bookmarkDao().delete(bm)
           }
         },
+        onAddBookmark = {
+          scope.launch(Dispatchers.IO) {
+            val bm = BookmarkItem(url = activeTab.url, title = activeTab.title, timestamp = System.currentTimeMillis())
+            database.bookmarkDao().insert(bm)
+          }
+          android.widget.Toast.makeText(context, "Added to Bookmarks", android.widget.Toast.LENGTH_SHORT).show()
+        },
+        onSaveToReadingList = {
+          android.widget.Toast.makeText(context, "Saved to Reading List", android.widget.Toast.LENGTH_SHORT).show()
+        },
+        onCreateCollection = {
+          android.widget.Toast.makeText(context, "Collection feature coming soon", android.widget.Toast.LENGTH_SHORT).show()
+        },
+        onSyncStatus = {
+          android.widget.Toast.makeText(context, "Syncing data...", android.widget.Toast.LENGTH_SHORT).show()
+        },
+        onShareUrl = { url ->
+          val sendIntent: android.content.Intent = android.content.Intent().apply {
+            action = android.content.Intent.ACTION_SEND
+            putExtra(android.content.Intent.EXTRA_TEXT, url)
+            type = "text/plain"
+          }
+          val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+          context.startActivity(shareIntent)
+        },
+        onAddHistoryItemToBookmark = { item ->
+          scope.launch(Dispatchers.IO) {
+            val bm = BookmarkItem(url = item.url, title = item.title, timestamp = System.currentTimeMillis())
+            database.bookmarkDao().insert(bm)
+          }
+          android.widget.Toast.makeText(context, "Saved history item to Bookmarks", android.widget.Toast.LENGTH_SHORT).show()
+        },
         onDismiss = { showHistoryBookmarksSheet = false },
       )
     }

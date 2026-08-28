@@ -75,6 +75,12 @@ fun HistoryBookmarksSheet(
   onDeleteHistory: (HistoryItem) -> Unit,
   onClearAllHistory: () -> Unit,
   onDeleteBookmark: (BookmarkItem) -> Unit,
+  onAddBookmark: () -> Unit = {},
+  onSaveToReadingList: () -> Unit = {},
+  onCreateCollection: () -> Unit = {},
+  onSyncStatus: () -> Unit = {},
+  onShareUrl: (String) -> Unit = {},
+  onAddHistoryItemToBookmark: (HistoryItem) -> Unit = {},
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -120,11 +126,14 @@ fun HistoryBookmarksSheet(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Text(
-        text = "HISTORY & BOOKMARKS",
+        text = "ACTIVITY",
         color = ThemeCyber.colors.textPrimary,
         fontSize = 17.sp,
-        fontWeight = FontWeight.Medium,
-        letterSpacing = 0.5.sp
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.weight(1f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
       )
 
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -296,10 +305,10 @@ fun HistoryBookmarksSheet(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-      ActionCard(icon = Icons.Default.StarBorder, title = "ADD\nBOOKMARK", modifier = Modifier.weight(1f))
-      ActionCard(icon = Icons.Default.MenuBook, title = "SAVE TO\nREADING LIST", modifier = Modifier.weight(1f))
-      ActionCard(icon = Icons.Default.CreateNewFolder, title = "CREATE\nCOLLECTION", modifier = Modifier.weight(1f))
-      ActionCard(icon = Icons.Default.Sync, title = "SYNC\nSTATUS", modifier = Modifier.weight(1f))
+      ActionCard(icon = Icons.Default.StarBorder, title = "ADD\nBOOKMARK", modifier = Modifier.weight(1f), onClick = onAddBookmark)
+      ActionCard(icon = Icons.Default.MenuBook, title = "SAVE TO\nREADING LIST", modifier = Modifier.weight(1f), onClick = onSaveToReadingList)
+      ActionCard(icon = Icons.Default.CreateNewFolder, title = "CREATE\nCOLLECTION", modifier = Modifier.weight(1f), onClick = onCreateCollection)
+      ActionCard(icon = Icons.Default.Sync, title = "SYNC\nSTATUS", modifier = Modifier.weight(1f), onClick = onSyncStatus)
     }
 
     Spacer(modifier = Modifier.height(16.dp))
@@ -352,7 +361,9 @@ fun HistoryBookmarksSheet(
                   onSelectUrl(item.url)
                   onDismiss()
                 },
-                onDelete = { onDeleteHistory(item) }
+                onDelete = { onDeleteHistory(item) },
+                onBookmark = { onAddHistoryItemToBookmark(item) },
+                onShare = { onShareUrl(item.url) }
               )
             }
           }
@@ -432,12 +443,12 @@ fun HistoryBookmarksSheet(
 }
 
 @Composable
-private fun ActionCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, modifier: Modifier) {
+private fun ActionCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, modifier: Modifier, onClick: () -> Unit = {}) {
   Surface(
     shape = RoundedCornerShape(12.dp),
     color = ThemeCyber.colors.surface,
     border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
-    modifier = modifier.aspectRatio(1f)
+    modifier = modifier.aspectRatio(1f).clickable { onClick() }
   ) {
     Column(
       modifier = Modifier
@@ -498,6 +509,8 @@ private fun HistoryItemCard(
   item: HistoryItem,
   onItemClick: () -> Unit,
   onDelete: () -> Unit,
+  onBookmark: () -> Unit = {},
+  onShare: () -> Unit = {},
 ) {
   val context = LocalContext.current
   val domain = remember(item.url) { 
@@ -590,9 +603,9 @@ private fun HistoryItemCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
       ) {
-        Icon(Icons.Default.StarBorder, contentDescription = "Star", tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.StarBorder, contentDescription = "Star", tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(18.dp).clickable { onBookmark() })
         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(18.dp).clickable { onDelete() })
-        Icon(Icons.Default.Share, contentDescription = "Share", tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.Share, contentDescription = "Share", tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(18.dp).clickable { onShare() })
       }
     }
   }

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -126,7 +127,12 @@ fun TerminalUrlBar(
   }
 
   // Auto-hide the Quick Actions menu after 3.5 seconds
-  LaunchedEffect(url, showQuickActions) {
+  
+  BackHandler(enabled = isEditing) {
+    isEditing = false
+    editText = url
+  }
+LaunchedEffect(url, showQuickActions) {
     if (showQuickActions && !isEditing && url.isNotBlank() && url != "about:blank" && url != "netrunner://newtab") {
       delay(3500)
       showQuickActions = false
@@ -347,24 +353,32 @@ fun TerminalUrlBar(
                     .focusRequester(focusRequester)
                 )
               }
-              if (editText.isNotEmpty()) {
-                IconButton(
-                  onClick = { editText = "" },
-                  modifier = Modifier.size(24.dp)
-                ) {
-                  Icon(
-                    Icons.Default.Clear,
-                    contentDescription = "Clear text",
-                    tint = ThemeCyber.colors.textSecondary,
-                    modifier = Modifier.size(16.dp)
-                  )
-                }
+              IconButton(
+                onClick = { 
+                  if (editText.isNotEmpty()) {
+                    editText = ""
+                  } else {
+                    isEditing = false
+                    editText = url
+                  }
+                },
+                modifier = Modifier.size(24.dp)
+              ) {
+                Icon(
+                  Icons.Default.Clear,
+                  contentDescription = "Clear or cancel",
+                  tint = ThemeCyber.colors.textSecondary,
+                  modifier = Modifier.size(16.dp)
+                )
               }
             } else {
               Box(
                 modifier = Modifier
                   .weight(1f)
-                  .clickable { isEditing = true }
+                  .combinedClickable(
+                    onClick = { isEditing = true },
+                    onLongClick = { showLongPressMenu = true }
+                  )
                   .padding(vertical = 8.dp),
                 contentAlignment = Alignment.CenterStart
               ) {
@@ -384,6 +398,68 @@ fun TerminalUrlBar(
                   maxLines = 1,
                   overflow = TextOverflow.Ellipsis
                 )
+
+                DropdownMenu(
+                  expanded = showLongPressMenu,
+                  onDismissRequest = { showLongPressMenu = false },
+                  modifier = Modifier
+                    .background(ThemeCyber.colors.surface)
+                    .border(1.dp, ThemeCyber.colors.surfaceBorder, RoundedCornerShape(8.dp))
+                ) {
+                  DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp)) },
+                    text = { Text("Copy Exact URL", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                      showLongPressMenu = false
+                      clipboard.copy(url, "URL")
+                      android.widget.Toast.makeText(context, "Exact URL copied", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                  )
+                  DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = ThemeCyber.colors.secondary, modifier = Modifier.size(16.dp)) },
+                    text = { Text("Copy Clean URL (No Trackers)", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                      showLongPressMenu = false
+                      val clean = com.remmi.browser.security.RedirectInspector.stripTrackingParameters(url)
+                      clipboard.copy(clean, "Clean URL")
+                      android.widget.Toast.makeText(context, "Clean URL copied", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                  )
+                  DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Default.Public, contentDescription = null, tint = ThemeCyber.colors.primary, modifier = Modifier.size(16.dp)) },
+                    text = { Text("Copy Domain Only", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                      showLongPressMenu = false
+                      val domain = com.remmi.browser.security.RedirectInspector.extractDomain(url)
+                      clipboard.copy(domain, "Domain")
+                      android.widget.Toast.makeText(context, "Domain copied: $domain", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                  )
+                  DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null, tint = ThemeCyber.colors.secondary, modifier = Modifier.size(16.dp)) },
+                    text = { Text("Inspect Link & Redirects", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                      showLongPressMenu = false
+                      onInspectRedirects()
+                    }
+                  )
+                  DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Default.Shield, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp)) },
+                    text = { Text("Security Shield Info", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                      showLongPressMenu = false
+                      onOpenSecurityPanel()
+                    }
+                  )
+                  DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(16.dp)) },
+                    text = { Text("Share Link", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                      showLongPressMenu = false
+                      onShareUrl()
+                    }
+                  )
+                }
               }
             }
 

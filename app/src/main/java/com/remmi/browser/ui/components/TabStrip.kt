@@ -442,6 +442,43 @@ fun TabGridSheet(
 
     Spacer(modifier = Modifier.height(12.dp))
 
+    // Quick Actions Bar (Incognito, Tor, Close All)
+    Spacer(modifier = Modifier.height(6.dp))
+    HorizontalDivider(color = ThemeCyber.colors.surfaceBorder.copy(alpha = 0.5f))
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Quick Incognito Button
+        OutlinedButton(
+          onClick = {
+            onNewTab(PrivacyProfile.INCOGNITO, null)
+            onDismiss()
+          },
+          border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
+          colors = ButtonDefaults.outlinedButtonColors(containerColor = ThemeCyber.colors.surface),
+          shape = RoundedCornerShape(10.dp),
+          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+          Icon(
+            painter = painterResource(R.drawable.ic_incognito),
+            contentDescription = "New Incognito",
+            tint = ThemeCyber.colors.textPrimary,
+            modifier = Modifier.size(15.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Incognito",
+            fontSize = 12.sp,
+            color = ThemeCyber.colors.textPrimary,
+            fontWeight = FontWeight.Medium
+          )
+        }
+
     // 3. MAIN SCROLLABLE CONTENT (SPACES + CHIPS + TABS)
     LazyColumn(
       modifier = Modifier
@@ -824,42 +861,6 @@ fun TabGridSheet(
       }
     }
 
-    // 4. BOTTOM ACTION BAR (Incognito, Tor, Close All)
-    Spacer(modifier = Modifier.height(6.dp))
-    HorizontalDivider(color = ThemeCyber.colors.surfaceBorder.copy(alpha = 0.5f))
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Quick Incognito Button
-        OutlinedButton(
-          onClick = {
-            onNewTab(PrivacyProfile.INCOGNITO, null)
-            onDismiss()
-          },
-          border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
-          colors = ButtonDefaults.outlinedButtonColors(containerColor = ThemeCyber.colors.surface),
-          shape = RoundedCornerShape(10.dp),
-          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-          Icon(
-            painter = painterResource(R.drawable.ic_incognito),
-            contentDescription = "New Incognito",
-            tint = ThemeCyber.colors.textPrimary,
-            modifier = Modifier.size(15.dp)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Incognito",
-            fontSize = 12.sp,
-            color = ThemeCyber.colors.textPrimary,
-            fontWeight = FontWeight.Medium
-          )
-        }
 
         // Quick Tor Tab
         OutlinedButton(
@@ -1177,14 +1178,28 @@ private fun ModernTabCard(
           Spacer(modifier = Modifier.width(6.dp))
 
           // Tab Title / Domain
-          Text(
-            text = tab.title.ifEmpty { cleanDomain },
-            color = ThemeCyber.colors.textPrimary,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-          )
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = tab.title.ifEmpty { cleanDomain },
+              color = ThemeCyber.colors.textPrimary,
+              fontSize = 11.5.sp,
+              fontWeight = FontWeight.SemiBold,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+            val profileText = when (tab.profile) {
+              PrivacyProfile.GHOST -> "Tor"
+              PrivacyProfile.INCOGNITO -> "Incognito"
+              else -> "Shield"
+            }
+            Text(
+              text = profileText,
+              color = profileColor,
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              fontFamily = CyberMonoFamily
+            )
+          }
         }
 
         // 3-dots Overflow Menu
@@ -1277,24 +1292,17 @@ private fun ModernTabCard(
               overflow = TextOverflow.Ellipsis
             )
 
-            // Stylized Website Visual Lines
-            Column(
-              verticalArrangement = Arrangement.spacedBy(3.dp),
-              modifier = Modifier.fillMaxWidth()
+            Box(
+              modifier = Modifier.fillMaxWidth().weight(1f),
+              contentAlignment = Alignment.Center
             ) {
-              Box(
-                modifier = Modifier
-                  .fillMaxWidth(0.9f)
-                  .height(4.dp)
-                  .clip(RoundedCornerShape(2.dp))
-                  .background(ThemeCyber.colors.surfaceBorder)
-              )
-              Box(
-                modifier = Modifier
-                  .fillMaxWidth(0.65f)
-                  .height(4.dp)
-                  .clip(RoundedCornerShape(2.dp))
-                  .background(ThemeCyber.colors.surfaceBorder.copy(alpha = 0.6f))
+              coil.compose.AsyncImage(
+                model = coil.request.ImageRequest.Builder(LocalContext.current)
+                  .data(faviconUrl)
+                  .crossfade(true)
+                  .build(),
+                contentDescription = null,
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
               )
             }
 

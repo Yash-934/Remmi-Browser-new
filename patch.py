@@ -1,113 +1,70 @@
 import re
 
-with open("app/src/main/java/com/remmi/browser/storage/NetRunnerDatabase.kt", "r") as f:
+with open('app/src/main/java/com/remmi/browser/ui/components/UrlBar.kt', 'r') as f:
     content = f.read()
 
-# 1. Replace isWipeActive definition with wipeState
-content = re.sub(
-    r'@Volatile var isWipeActive: Boolean = false',
-    '''enum class WipeState {
-      IDLE,
-      ACTIVE,
-      RECOVERY_REQUIRED
-    }
+# Add BackHandler import if not exists
+if 'import androidx.activity.compose.BackHandler' not in content:
+    content = content.replace('import androidx.compose.runtime.*', 'import androidx.compose.runtime.*\nimport androidx.activity.compose.BackHandler')
 
-    @Volatile private var wipeState: WipeState = WipeState.IDLE
+# Add BackHandler inside TerminalUrlBar
+terminal_body_start = content.find('fun TerminalUrlBar(')
+if terminal_body_start == -1:
+    print("Error finding TerminalUrlBar")
+    exit(1)
 
-    val isWipeActive: Boolean
-      get() = wipeState != WipeState.IDLE
+# Find the first LaunchedEffect to insert BackHandler before it
+launched_effect_pos = content.find('LaunchedEffect', terminal_body_start)
 
-    internal fun beginWipe() {
-      wipeState = WipeState.ACTIVE
-    }
+back_handler_code = """
+  BackHandler(enabled = isEditing) {
+    isEditing = false
+    editText = url
+  }
+"""
 
-    internal fun endWipeAfterSuccess() {
-      wipeState = WipeState.IDLE
-    }
-    
-    internal fun endWipeWithFailure() {
-      wipeState = WipeState.RECOVERY_REQUIRED
-    }''',
-    content
-)
+content = content[:launched_effect_pos] + back_handler_code + content[launched_effect_pos:]
 
-# 2. Fix getDatabase
-get_database_old = '''    fun getDatabase(context: Context): NetRunnerDatabase {
-      if (isWipeActive) throw IllegalStateException("Cannot open database during an active Panic Wipe.")
-      return INSTANCE ?: synchronized(this) {
-        val passphrase = getOrCreatePassphrase(context)
-        try {
-          val factory = SupportFactory(passphrase)
-          val instance = Room.databaseBuilder(
-            context.applicationContext,
-            NetRunnerDatabase::class.java,
-            "netrunner_vault.db"
-          )
-            .openHelperFactory(factory)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-            .build()
-          INSTANCE = instance
-          instance
-        } finally {
-          passphrase.fill(0) // Immediate in-place memory zeroization of temporary passphrase
-        }
-      }
-    }'''
+# Update the Clear button logic
+old_clear = """              if (editText.isNotEmpty()) {
+                IconButton(
+                  onClick = { editText = "" },
+                  modifier = Modifier.size(24.dp)
+                ) {
+                  Icon(
+                    Icons.Default.Clear,
+                    contentDescription = "Clear text",
+                    tint = ThemeCyber.colors.textSecondary,
+                    modifier = Modifier.size(16.dp)
+                  )
+                }
+              }"""
 
-get_database_new = '''    fun getDatabase(context: Context): NetRunnerDatabase {
-      return synchronized(this) {
-        if (wipeState != WipeState.IDLE) {
-          throw IllegalStateException("Cannot open database during an active Panic Wipe.")
-        }
-        var instance = INSTANCE
-        if (instance != null) {
-          return@synchronized instance
-        }
-        val passphrase = getOrCreatePassphrase(context)
-        try {
-          val factory = SupportFactory(passphrase)
-          instance = Room.databaseBuilder(
-            context.applicationContext,
-            NetRunnerDatabase::class.java,
-            "netrunner_vault.db"
-          )
-            .openHelperFactory(factory)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-            .build()
-          INSTANCE = instance
-          instance
-        } finally {
-          passphrase.fill(0) // Immediate in-place memory zeroization of temporary passphrase
-        }
-      }
-    }'''
+new_clear = """              IconButton(
+                onClick = { 
+                  if (editText.isNotEmpty()) {
+                    editText = ""
+                  } else {
+                    isEditing = false
+                    editText = url
+                  }
+                },
+                modifier = Modifier.size(24.dp)
+              ) {
+                Icon(
+                  Icons.Default.Clear,
+                  contentDescription = "Clear or cancel",
+                  tint = ThemeCyber.colors.textSecondary,
+                  modifier = Modifier.size(16.dp)
+                )
+              }"""
 
-content = content.replace(get_database_old, get_database_new)
+if old_clear in content:
+    content = content.replace(old_clear, new_clear)
+else:
+    print("Warning: old clear button not found exactly")
 
-# 3. Fix secureWipe usages of isWipeActive
-secure_wipe_old = '''      isWipeActive = true
-      var vaultScrubbed = false'''
-secure_wipe_new = '''      beginWipe()
-      var vaultScrubbed = false'''
-
-content = content.replace(secure_wipe_old, secure_wipe_new)
-
-wipe_active_false_old = '''      if (!wipeVault) {
-          // If we aren't wiping the vault, we can unset the wipe active flag
-          // so the app continues normally after the panic wipe (which cleared browser data).
-          isWipeActive = false
-      }'''
-
-wipe_active_false_new = '''      // Evaluate wipe success
-      val isSuccess = errors.isEmpty() && (!wipeVault || vaultScrubbed)
-      
-      if (isSuccess) {
-          endWipeAfterSuccess()
-      } else {
-          endWipeWithFailure()
-      }'''
-
-content = content.replace(wipe_active_false_old, wipe_active_false_new)
-
-with open("app/src/main/java/com/remmi/browser/storage/NetRunnerDatabase.kt", "w") as f:
+with open('app/src/main/java/com/remmi/browser/ui/components/UrlBar.kt', 'w') as f:
     f.write(content)
+
+print("Success")
