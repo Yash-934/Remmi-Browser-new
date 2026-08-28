@@ -440,7 +440,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
     
     internal fun endWipeWithFailure() {
       synchronized(this) {
-        wipeState = WipeState.IDLE
+        wipeState = WipeState.RECOVERY_REQUIRED
       }
     }
 
@@ -592,6 +592,9 @@ abstract class NetRunnerDatabase : RoomDatabase() {
 
     fun getDatabase(context: Context): NetRunnerDatabase {
       return synchronized(this) {
+        if (isWipeActive) {
+          throw IllegalStateException("Cannot open database during an active Panic Wipe (state=$wipeState)")
+        }
         var instance = INSTANCE
         if (instance != null && instance.isOpen) {
           return@synchronized instance

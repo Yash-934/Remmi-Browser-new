@@ -85,17 +85,9 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 fun getFaviconUrl(url: String): String {
-  if (url.isBlank()) return ""
-  return try {
-    val cleanUrl = if (!url.startsWith("http://") && !url.startsWith("https://")) "https://$url" else url
-    val uri = Uri.parse(cleanUrl)
-    val host = uri.host?.removePrefix("www.") ?: return ""
-    if (host.isBlank()) return ""
-    // Google S2 Favicon service provides high-res 128px official site icons
-    "https://www.google.com/s2/favicons?domain=$host&sz=128"
-  } catch (e: Exception) {
-    ""
-  }
+  // Remote favicon queries (e.g. Google S2) leak visited domains.
+  // We return empty to rely exclusively on local site-provided icons and letter badges.
+  return ""
 }
 
 @OptIn(ExperimentalFoundationApi::class)
