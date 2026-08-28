@@ -77,14 +77,14 @@ fun TabStrip(
   onNewTab: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  val isDark = isSystemInDarkTheme()
-  val bgColor = if (isDark) Color(0xFF080D1A) else Color(0xFFF1F5F9)
-  val surfaceColor = if (isDark) Color(0xFF131B2E) else Color(0xFFFFFFFF)
-  val activeSurfaceColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE8F0FE)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFCBD5E1)
-  val activeBorderColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF1A73E8)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+  val cyberColors = ThemeCyber.colors
+  val bgColor = cyberColors.background
+  val surfaceColor = cyberColors.surface
+  val activeSurfaceColor = cyberColors.surfaceLight
+  val borderColor = cyberColors.surfaceBorder
+  val activeBorderColor = cyberColors.primary
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
 
   Row(
     modifier = modifier
@@ -103,7 +103,7 @@ fun TabStrip(
         val group = tabGroups.find { it.id == tab.groupId }
         val groupColor = group?.let { Color(it.colorHex) }
         val activeColor = if (tab.profile == PrivacyProfile.GHOST) {
-          Color(0xFFBB86FC)
+          cyberColors.torPurple
         } else {
           groupColor ?: activeBorderColor
         }
@@ -134,16 +134,16 @@ fun TabStrip(
             Spacer(modifier = Modifier.width(5.dp))
           }
 
-          if (tab.profile == PrivacyProfile.INCOGNITO) {
+          if (tab.profile == PrivacyProfile.GHOST || tab.profile == PrivacyProfile.INCOGNITO) {
             Icon(
-              painter = painterResource(R.drawable.ic_incognito),
-              contentDescription = "Incognito Tab",
-              tint = if (isActive) textPrimary else textSecondary,
-              modifier = Modifier.size(13.dp),
+              painter = painterResource(R.drawable.ic_tor),
+              contentDescription = "Tor Tab",
+              tint = if (isActive) cyberColors.torPurple else textSecondary,
+              modifier = Modifier.size(14.dp),
             )
           } else {
             Icon(
-              imageVector = if (tab.profile == PrivacyProfile.GHOST) Icons.Default.VpnKey else Icons.Default.Shield,
+              imageVector = Icons.Default.Shield,
               contentDescription = null,
               tint = if (isActive) activeColor else textSecondary,
               modifier = Modifier.size(12.dp),
@@ -241,23 +241,25 @@ fun TabGridSheet(
   onDismiss: () -> Unit,
 ) {
   val context = LocalContext.current
-  val isDark = isSystemInDarkTheme()
+  val cyberColors = ThemeCyber.colors
+  val isLight = cyberColors.isLight
+  val isDark = !isLight
   val scope = rememberCoroutineScope()
   val database = remember { NetRunnerDatabase.getDatabase(context) }
   val thumbnailManager = remember { TabThumbnailManager.getInstance(context) }
   val thumbnailVersions by thumbnailManager.thumbnailVersions.collectAsState()
 
-  // Theme Colors matching reference image
-  val backgroundColor = if (isDark) Color(0xFF0B1120) else Color(0xFFF8FAFC)
-  val surfaceCardColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val surfacePillColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFE2E8F0)
-  val activeAccentColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF1A73E8)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-  val textMuted = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-  val dangerRed = if (isDark) Color(0xFFEF4444) else Color(0xFFDC2626)
-  val torPurple = Color(0xFFBB86FC)
+  // Theme Colors dynamically matching selected CyberTheme
+  val backgroundColor = cyberColors.background
+  val surfaceCardColor = cyberColors.surface
+  val surfacePillColor = cyberColors.surfaceLight
+  val borderColor = cyberColors.surfaceBorder
+  val activeAccentColor = cyberColors.primary
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
+  val textMuted = cyberColors.textMuted
+  val dangerRed = cyberColors.dangerRed
+  val torPurple = cyberColors.torPurple
 
   // Local State
   var selectedFilter by remember { mutableStateOf(TabFilter.ALL) }
@@ -276,8 +278,7 @@ fun TabGridSheet(
 
   // Dynamic Tab Sets & Counts
   val personalTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.SHIELD && it.groupId == null } }
-  val incognitoTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.INCOGNITO } }
-  val torTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.GHOST } }
+  val torTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.GHOST || it.profile == PrivacyProfile.INCOGNITO } }
   val inactiveTabs = remember(tabs) { tabs.filter { it.isInactive } }
   val activeOnlyTabs = remember(tabs) { tabs.filter { !it.isInactive } }
 
@@ -285,7 +286,6 @@ fun TabGridSheet(
   val filteredTabs = remember(tabs, selectedFilter, selectedSpaceFilter, searchQuery) {
     var list = when (selectedSpaceFilter) {
       "personal" -> personalTabs
-      "incognito" -> incognitoTabs
       "tor" -> torTabs
       null -> tabs
       else -> tabs.filter { it.groupId == selectedSpaceFilter }
@@ -415,7 +415,7 @@ fun TabGridSheet(
         Row(verticalAlignment = Alignment.CenterVertically) {
           Surface(
             shape = RoundedCornerShape(8.dp),
-            color = if (isDark) Color(0xFF0E2A47) else Color(0xFFE8F0FE),
+            color = activeAccentColor.copy(alpha = 0.15f),
             border = BorderStroke(1.dp, activeAccentColor.copy(alpha = 0.5f)),
             modifier = Modifier.size(32.dp)
           ) {
@@ -462,7 +462,7 @@ fun TabGridSheet(
           // [+] New Tab
           Surface(
             shape = RoundedCornerShape(10.dp),
-            color = if (isDark) Color(0xFF0E2A47) else Color(0xFFE8F0FE),
+            color = activeAccentColor.copy(alpha = 0.15f),
             border = BorderStroke(1.dp, activeAccentColor.copy(alpha = 0.5f)),
             modifier = Modifier
               .size(36.dp)
@@ -512,7 +512,7 @@ fun TabGridSheet(
     // 2. SEARCH TABS AND SPACES INPUT BAR
     Surface(
       shape = RoundedCornerShape(22.dp),
-      color = if (isDark) Color(0xFF131B2E) else Color(0xFFFFFFFF),
+      color = surfaceCardColor,
       border = BorderStroke(1.dp, borderColor),
       shadowElevation = if (isDark) 0.dp else 1.dp,
       modifier = Modifier
@@ -579,34 +579,6 @@ fun TabGridSheet(
       verticalAlignment = Alignment.CenterVertically
     ) {
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // [ Incognito ] Pill Button
-        OutlinedButton(
-          onClick = {
-            onNewTab(PrivacyProfile.INCOGNITO, null)
-            onDismiss()
-          },
-          border = BorderStroke(1.dp, borderColor),
-          colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = surfaceCardColor
-          ),
-          shape = RoundedCornerShape(12.dp),
-          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-          Icon(
-            painter = painterResource(R.drawable.ic_incognito),
-            contentDescription = "New Incognito",
-            tint = textPrimary,
-            modifier = Modifier.size(15.dp)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Incognito",
-            fontSize = 12.sp,
-            color = textPrimary,
-            fontWeight = FontWeight.Medium
-          )
-        }
-
         // [ Tor ] Pill Button
         OutlinedButton(
           onClick = {
@@ -615,21 +587,21 @@ fun TabGridSheet(
           },
           border = BorderStroke(1.dp, torPurple.copy(alpha = 0.6f)),
           colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (isDark) torPurple.copy(alpha = 0.12f) else Color(0xFFF3E8FF)
+            containerColor = torPurple.copy(alpha = if (isDark) 0.15f else 0.10f)
           ),
           shape = RoundedCornerShape(12.dp),
-          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+          contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
         ) {
           Icon(
-            imageVector = Icons.Default.VpnKey,
+            painter = painterResource(R.drawable.ic_tor),
             contentDescription = "New Tor Tab",
             tint = torPurple,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(16.dp)
           )
           Spacer(modifier = Modifier.width(6.dp))
           Text(
             text = "Tor",
-            fontSize = 12.sp,
+            fontSize = 12.5.sp,
             color = torPurple,
             fontWeight = FontWeight.Bold
           )
@@ -709,31 +681,17 @@ fun TabGridSheet(
                 count = personalTabs.size,
                 accentColor = activeAccentColor,
                 isSelected = selectedSpaceFilter == "personal",
-                isDark = isDark,
                 onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "personal") null else "personal" }
-              )
-            }
-            // Incognito Space
-            item {
-              SpaceCard(
-                title = "Incognito Space",
-                icon = { Icon(painterResource(R.drawable.ic_incognito), contentDescription = null, tint = textSecondary, modifier = Modifier.size(18.dp)) },
-                count = incognitoTabs.size,
-                accentColor = textSecondary,
-                isSelected = selectedSpaceFilter == "incognito",
-                isDark = isDark,
-                onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "incognito") null else "incognito" }
               )
             }
             // Tor Space
             item {
               SpaceCard(
                 title = "Tor Space",
-                icon = { Icon(Icons.Default.VpnKey, contentDescription = null, tint = torPurple, modifier = Modifier.size(18.dp)) },
+                icon = { Icon(painterResource(R.drawable.ic_tor), contentDescription = null, tint = torPurple, modifier = Modifier.size(18.dp)) },
                 count = torTabs.size,
                 accentColor = torPurple,
                 isSelected = selectedSpaceFilter == "tor",
-                isDark = isDark,
                 onClick = { selectedSpaceFilter = if (selectedSpaceFilter == "tor") null else "tor" }
               )
             }
@@ -746,7 +704,6 @@ fun TabGridSheet(
                 count = groupTabsCount,
                 accentColor = Color(group.colorHex),
                 isSelected = selectedSpaceFilter == group.id,
-                isDark = isDark,
                 onClick = { selectedSpaceFilter = if (selectedSpaceFilter == group.id) null else group.id },
                 onLongClick = { editingGroup = group }
               )
@@ -754,7 +711,6 @@ fun TabGridSheet(
             // + New Space Card
             item {
               NewSpaceCard(
-                isDark = isDark,
                 onClick = { showCreateGroupDialog = true }
               )
             }
@@ -775,7 +731,6 @@ fun TabGridSheet(
               icon = Icons.Default.GridView,
               isSelected = selectedFilter == TabFilter.ALL,
               accentColor = activeAccentColor,
-              isDark = isDark,
               onClick = { selectedFilter = TabFilter.ALL }
             )
           }
@@ -785,7 +740,6 @@ fun TabGridSheet(
               icon = Icons.Default.Schedule,
               isSelected = selectedFilter == TabFilter.RECENT,
               accentColor = activeAccentColor,
-              isDark = isDark,
               onClick = { selectedFilter = TabFilter.RECENT }
             )
           }
@@ -796,7 +750,6 @@ fun TabGridSheet(
               icon = Icons.Default.CheckCircle,
               isSelected = selectedFilter == TabFilter.ACTIVE,
               accentColor = activeAccentColor,
-              isDark = isDark,
               onClick = { selectedFilter = TabFilter.ACTIVE }
             )
           }
@@ -807,7 +760,6 @@ fun TabGridSheet(
               icon = Icons.Default.NightlightRound,
               isSelected = selectedFilter == TabFilter.SLEEP,
               accentColor = activeAccentColor,
-              isDark = isDark,
               onClick = { selectedFilter = TabFilter.SLEEP }
             )
           }
@@ -892,7 +844,6 @@ fun TabGridSheet(
                   isSelectMode = isSelectMode,
                   groupColor = groupColor,
                   thumbnail = thumbnailBitmap,
-                  isDark = isDark,
                   activeAccentColor = activeAccentColor,
                   onSelect = {
                     if (isSelectMode) {
@@ -972,7 +923,7 @@ fun TabGridSheet(
     Spacer(modifier = Modifier.height(8.dp))
     Surface(
       shape = RoundedCornerShape(18.dp),
-      color = if (isDark) Color(0xFF131B2E) else Color(0xFFFFFFFF),
+      color = surfaceCardColor,
       border = BorderStroke(1.dp, borderColor),
       shadowElevation = if (isDark) 0.dp else 2.dp,
       modifier = Modifier
@@ -1115,7 +1066,6 @@ fun TabGridSheet(
     CreateTabGroupDialog(
       availableTabs = tabs.filter { it.groupId == null },
       preselectedTabIds = selectedTabIds.toList(),
-      isDark = isDark,
       onDismiss = { showCreateGroupDialog = false },
       onCreate = { title, colorHex, tabIds ->
         onCreateGroup(title, colorHex, tabIds)
@@ -1130,7 +1080,6 @@ fun TabGridSheet(
   editingGroup?.let { group ->
     EditTabGroupDialog(
       group = group,
-      isDark = isDark,
       onDismiss = { editingGroup = null },
       onSave = { newTitle, newColor ->
         onUpdateGroup(group.id, newTitle, newColor)
@@ -1210,7 +1159,6 @@ fun TabGridSheet(
     TabActionSheet(
       tab = tab,
       tabGroups = tabGroups,
-      isDark = isDark,
       onDismiss = { tabOptionsTarget = null },
       onOpen = {
         val originalIndex = tabs.indexOfFirst { it.id == tab.id }
@@ -1296,14 +1244,15 @@ private fun SpaceCard(
   isSelected: Boolean,
   icon: @Composable () -> Unit,
   accentColor: Color,
-  isDark: Boolean,
   onClick: () -> Unit,
   onLongClick: (() -> Unit)? = null,
 ) {
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFE2E8F0)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textMuted = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textMuted = cyberColors.textMuted
 
   Surface(
     shape = RoundedCornerShape(16.dp),
@@ -1364,14 +1313,15 @@ private fun SpaceCard(
 
 @Composable
 private fun NewSpaceCard(
-  isDark: Boolean,
   onClick: () -> Unit,
   modifier: Modifier = Modifier
 ) {
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFE2E8F0)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
 
   Surface(
     shape = RoundedCornerShape(16.dp),
@@ -1434,14 +1384,15 @@ private fun FilterChipItem(
   count: Int? = null,
   icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
   accentColor: Color,
-  isDark: Boolean,
   isSelected: Boolean,
   onClick: () -> Unit,
 ) {
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFE2E8F0)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
 
   Surface(
     shape = RoundedCornerShape(18.dp),
@@ -1494,22 +1445,23 @@ private fun ModernTabCard(
   isSelectMode: Boolean,
   groupColor: Color?,
   thumbnail: Bitmap?,
-  isDark: Boolean,
   activeAccentColor: Color,
   onSelect: () -> Unit,
   onClose: () -> Unit,
   onOptions: () -> Unit,
 ) {
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFE2E8F0)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-  val textMuted = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-  val torPurple = Color(0xFFBB86FC)
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
+  val textMuted = cyberColors.textMuted
+  val torPurple = cyberColors.torPurple
 
   val profileColor = when (tab.profile) {
     PrivacyProfile.GHOST -> torPurple
-    PrivacyProfile.INCOGNITO -> Color(0xFF8E8E93)
+    PrivacyProfile.INCOGNITO -> textSecondary
     else -> groupColor ?: activeAccentColor
   }
 
@@ -1583,7 +1535,7 @@ private fun ModernTabCard(
               modifier = Modifier
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(if (isActive) profileColor else Color(0xFF94A3B8))
+                .background(if (isActive) profileColor else textMuted)
             )
             Spacer(modifier = Modifier.width(5.dp))
           }
@@ -1601,8 +1553,7 @@ private fun ModernTabCard(
             // Security Badge: Shield / Incognito / Tor
             Row(verticalAlignment = Alignment.CenterVertically) {
               val profileLabel = when (tab.profile) {
-                PrivacyProfile.GHOST -> "Tor"
-                PrivacyProfile.INCOGNITO -> "Incognito"
+                PrivacyProfile.GHOST, PrivacyProfile.INCOGNITO -> "Tor"
                 else -> "Shield"
               }
               Text(
@@ -1647,13 +1598,13 @@ private fun ModernTabCard(
           .fillMaxWidth()
           .weight(1f)
           .clip(RoundedCornerShape(12.dp))
-          .background(if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
+          .background(cyberColors.surfaceLight)
           .border(0.6.dp, borderColor.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center
       ) {
         if (isBlankOrNewTab) {
           // Remmi Home Authentic Visual Preview
-          RemmiHomePreviewCanvas(isDark = isDark)
+          RemmiHomePreviewCanvas()
         } else if (thumbnail != null && !thumbnail.isRecycled) {
           // Actual Webpage Snapshot
           Image(
@@ -1667,7 +1618,6 @@ private fun ModernTabCard(
           WebSkeletonPreview(
             title = tab.title.ifEmpty { cleanDomain },
             domain = cleanDomain,
-            isDark = isDark,
             isGhost = tab.profile == PrivacyProfile.GHOST
           )
         }
@@ -1747,14 +1697,16 @@ private fun ModernTabCard(
 // -------------------------------------------------------------
 
 @Composable
-private fun RemmiHomePreviewCanvas(isDark: Boolean) {
+private fun RemmiHomePreviewCanvas() {
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+
   Box(
     modifier = Modifier
       .fillMaxSize()
       .background(
         Brush.verticalGradient(
-          colors = if (isDark) listOf(Color(0xFF0F172A), Color(0xFF131D31))
-          else listOf(Color(0xFFF8FAFC), Color(0xFFEDF2F7))
+          colors = listOf(cyberColors.background, cyberColors.surface)
         )
       )
       .padding(6.dp),
@@ -1769,14 +1721,14 @@ private fun RemmiHomePreviewCanvas(isDark: Boolean) {
       PandaMascotArt(
         size = 54.dp,
         isDarkTheme = isDark,
-        accentColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF1A73E8)
+        accentColor = cyberColors.primary
       )
 
       Spacer(modifier = Modifier.height(4.dp))
 
       Text(
         text = "Remmi Browser",
-        color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+        color = cyberColors.textPrimary,
         fontSize = 10.5.sp,
         fontWeight = FontWeight.ExtraBold,
         fontFamily = CyberMonoFamily
@@ -1784,7 +1736,7 @@ private fun RemmiHomePreviewCanvas(isDark: Boolean) {
 
       Text(
         text = "Private. Fast. Yours.",
-        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+        color = cyberColors.textSecondary,
         fontSize = 8.sp,
         fontWeight = FontWeight.Normal
       )
@@ -1794,8 +1746,8 @@ private fun RemmiHomePreviewCanvas(isDark: Boolean) {
       // Miniature Search Bar Surface
       Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (isDark) Color(0xFF1E293B) else Color(0xFFFFFFFF),
-        border = BorderStroke(0.6.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+        color = cyberColors.surfaceLight,
+        border = BorderStroke(0.6.dp, cyberColors.surfaceBorder),
         modifier = Modifier
           .fillMaxWidth(0.92f)
           .height(20.dp)
@@ -1809,13 +1761,13 @@ private fun RemmiHomePreviewCanvas(isDark: Boolean) {
           Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = if (isDark) Color(0xFF00E5FF) else Color(0xFF1A73E8),
+            tint = cyberColors.primary,
             modifier = Modifier.size(9.dp)
           )
           Spacer(modifier = Modifier.width(4.dp))
           Text(
             text = "Search or enter web address",
-            color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8),
+            color = cyberColors.textMuted,
             fontSize = 7.5.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1834,14 +1786,14 @@ private fun RemmiHomePreviewCanvas(isDark: Boolean) {
 private fun WebSkeletonPreview(
   title: String,
   domain: String,
-  isDark: Boolean,
   isGhost: Boolean = false
 ) {
-  val surfaceColor = if (isDark) Color(0xFF0F172A) else Color(0xFFFFFFFF)
-  val wireframeColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textMuted = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-  val torPurple = Color(0xFFBB86FC)
+  val cyberColors = ThemeCyber.colors
+  val surfaceColor = cyberColors.surface
+  val wireframeColor = cyberColors.surfaceLight
+  val textPrimary = cyberColors.textPrimary
+  val textMuted = cyberColors.textMuted
+  val torPurple = cyberColors.torPurple
 
   Box(
     modifier = Modifier
@@ -1915,7 +1867,7 @@ private fun WebSkeletonPreview(
             .weight(1f)
             .height(14.dp)
             .clip(RoundedCornerShape(4.dp))
-            .background(if (isGhost) torPurple.copy(alpha = 0.2f) else if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)),
+            .background(if (isGhost) torPurple.copy(alpha = 0.2f) else cyberColors.surfaceBorder),
           contentAlignment = Alignment.Center
         ) {
           Text(
@@ -1975,18 +1927,19 @@ private fun BottomNavIconButton(
 private fun CreateTabGroupDialog(
   availableTabs: List<BrowserTab>,
   preselectedTabIds: List<String> = emptyList(),
-  isDark: Boolean,
   onDismiss: () -> Unit,
   onCreate: (title: String, colorHex: Long, selectedTabIds: List<String>) -> Unit,
 ) {
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
+
   var groupTitle by remember { mutableStateOf("") }
   var selectedColorHex by remember { mutableStateOf(TabGroup.PRESET_COLORS[0]) }
   val selectedTabIds = remember { mutableStateListOf<String>().apply { addAll(preselectedTabIds) } }
-
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFCBD5E1)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -2088,7 +2041,7 @@ private fun CreateTabGroupDialog(
                 modifier = Modifier
                   .fillMaxWidth()
                   .clip(RoundedCornerShape(6.dp))
-                  .background(if (isChecked) Color(selectedColorHex).copy(alpha = 0.15f) else (if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)))
+                  .background(if (isChecked) Color(selectedColorHex).copy(alpha = 0.15f) else cyberColors.surfaceLight)
                   .clickable {
                     if (isChecked) selectedTabIds.remove(tab.id) else selectedTabIds.add(tab.id)
                   }
@@ -2143,19 +2096,20 @@ private fun CreateTabGroupDialog(
 @Composable
 private fun EditTabGroupDialog(
   group: TabGroup,
-  isDark: Boolean,
   onDismiss: () -> Unit,
   onSave: (title: String, colorHex: Long) -> Unit,
   onDelete: (closeTabs: Boolean) -> Unit,
 ) {
+  val cyberColors = ThemeCyber.colors
+  val isDark = !cyberColors.isLight
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
+  val dangerRed = cyberColors.dangerRed
+
   var groupTitle by remember { mutableStateOf(group.title) }
   var selectedColorHex by remember { mutableStateOf(group.colorHex) }
-
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFCBD5E1)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-  val dangerRed = if (isDark) Color(0xFFEF4444) else Color(0xFFDC2626)
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -2278,7 +2232,6 @@ private fun EditTabGroupDialog(
 private fun TabActionSheet(
   tab: BrowserTab,
   tabGroups: List<TabGroup>,
-  isDark: Boolean,
   onDismiss: () -> Unit,
   onOpen: () -> Unit,
   onDuplicate: () -> Unit,
@@ -2291,11 +2244,12 @@ private fun TabActionSheet(
   onCreateGroupWithTab: () -> Unit,
   onCloseTab: () -> Unit,
 ) {
-  val surfaceColor = if (isDark) Color(0xFF161F33) else Color(0xFFFFFFFF)
-  val borderColor = if (isDark) Color(0xFF26334D) else Color(0xFFE2E8F0)
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-  val dangerRed = if (isDark) Color(0xFFEF4444) else Color(0xFFDC2626)
+  val cyberColors = ThemeCyber.colors
+  val surfaceColor = cyberColors.surface
+  val borderColor = cyberColors.surfaceBorder
+  val textPrimary = cyberColors.textPrimary
+  val textSecondary = cyberColors.textSecondary
+  val dangerRed = cyberColors.dangerRed
 
   ModalBottomSheet(
     onDismissRequest = onDismiss,
@@ -2414,7 +2368,7 @@ private fun TabActionSheet(
       TabActionRow(
         icon = Icons.Default.CreateNewFolder,
         title = "+ Create New Space with this tab",
-        iconTint = if (isDark) Color(0xFF00E5FF) else Color(0xFF1A73E8),
+        iconTint = cyberColors.primary,
         onClick = onCreateGroupWithTab
       )
 
@@ -2438,9 +2392,9 @@ private fun TabActionRow(
   trailingContent: String? = null,
   onClick: () -> Unit,
 ) {
-  val isDark = isSystemInDarkTheme()
-  val textPrimary = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-  val textMuted = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+  val cyberColors = ThemeCyber.colors
+  val textPrimary = cyberColors.textPrimary
+  val textMuted = cyberColors.textMuted
 
   Row(
     modifier = Modifier
@@ -2478,3 +2432,4 @@ private fun TabActionRow(
     }
   }
 }
+

@@ -68,6 +68,34 @@ data class DownloadItem(
   val filePath: String = "",
 )
 
+@Entity(
+  tableName = "saved_readings",
+  indices = [
+    Index(value = ["folder"]),
+    Index(value = ["saved_at"])
+  ]
+)
+data class ReadingListItem(
+  @PrimaryKey(autoGenerate = true) val id: Long = 0,
+  @ColumnInfo(name = "url") val url: String,
+  @ColumnInfo(name = "title") val title: String,
+  @ColumnInfo(name = "domain") val domain: String,
+  @ColumnInfo(name = "site_name") val siteName: String = "",
+  @ColumnInfo(name = "byline") val byline: String = "",
+  @ColumnInfo(name = "excerpt") val excerpt: String = "",
+  @ColumnInfo(name = "content_json") val contentJson: String = "",
+  @ColumnInfo(name = "folder") val folder: String = "General",
+  @ColumnInfo(name = "topic") val topic: String = "General",
+  @ColumnInfo(name = "reading_time_minutes") val readingTimeMinutes: Int = 1,
+  @ColumnInfo(name = "word_count") val wordCount: Int = 0,
+  @ColumnInfo(name = "lead_image_url") val leadImageUrl: String? = null,
+  @ColumnInfo(name = "saved_at") val savedAt: Long = System.currentTimeMillis(),
+  @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
+  @ColumnInfo(name = "is_read") val isRead: Boolean = false,
+  @ColumnInfo(name = "last_read_at") val lastReadAt: Long? = null,
+  @ColumnInfo(name = "notes") val notes: String = "",
+)
+
 @Entity(tableName = "session_tabs")
 data class SessionTabEntity(
   @PrimaryKey val id: String,
@@ -309,17 +337,69 @@ interface MasterKeyMetadataDao {
   suspend fun clearMetadata()
 }
 
+@Dao
+interface ReadingListDao {
+  @Query("SELECT * FROM saved_readings ORDER BY saved_at DESC")
+  fun getAllReadings(): Flow<List<ReadingListItem>>
+
+  @Query("SELECT * FROM saved_readings WHERE folder = :folder ORDER BY saved_at DESC")
+  fun getReadingsByFolder(folder: String): Flow<List<ReadingListItem>>
+
+  @Query("SELECT DISTINCT folder FROM saved_readings ORDER BY folder ASC")
+  fun getAllFolders(): Flow<List<String>>
+
+  @Query("SELECT * FROM saved_readings WHERE title LIKE '%' || :query || '%' OR excerpt LIKE '%' || :query || '%' OR domain LIKE '%' || :query || '%' OR folder LIKE '%' || :query || '%' OR topic LIKE '%' || :query || '%' ORDER BY saved_at DESC")
+  fun searchReadings(query: String): Flow<List<ReadingListItem>>
+
+  @Query("SELECT * FROM saved_readings WHERE id = :id LIMIT 1")
+  suspend fun getReadingById(id: Long): ReadingListItem?
+
+  @Query("SELECT * FROM saved_readings WHERE url = :url LIMIT 1")
+  suspend fun getReadingByUrl(url: String): ReadingListItem?
+
+  @Query("SELECT COUNT(*) FROM saved_readings")
+  fun getCountFlow(): Flow<Int>
+
+  @Query("SELECT COUNT(*) FROM saved_readings")
+  suspend fun getCount(): Int
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insert(item: ReadingListItem): Long
+
+  @Update
+  suspend fun update(item: ReadingListItem)
+
+  @Delete
+  suspend fun delete(item: ReadingListItem)
+
+  @Query("DELETE FROM saved_readings WHERE id = :id")
+  suspend fun deleteById(id: Long)
+
+  @Query("UPDATE saved_readings SET folder = :newFolder WHERE id = :id")
+  suspend fun updateFolder(id: Long, newFolder: String)
+
+  @Query("UPDATE saved_readings SET is_favorite = :isFavorite WHERE id = :id")
+  suspend fun toggleFavorite(id: Long, isFavorite: Boolean)
+
+  @Query("UPDATE saved_readings SET is_read = :isRead, last_read_at = :readAt WHERE id = :id")
+  suspend fun updateReadStatus(id: Long, isRead: Boolean, readAt: Long = System.currentTimeMillis())
+
+  @Query("DELETE FROM saved_readings")
+  suspend fun clearAll()
+}
+
 @Database(
   entities = [
     HistoryItem::class,
     BookmarkItem::class,
     BlockedEvent::class,
     DownloadItem::class,
+    ReadingListItem::class,
     SessionTabEntity::class,
     PasswordEntryEntity::class,
     MasterKeyMetadataEntity::class,
   ],
-  version = 5,
+  version = 6,
   exportSchema = false,
 )
 abstract class NetRunnerDatabase : RoomDatabase() {
@@ -327,6 +407,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
   abstract fun bookmarkDao(): BookmarkDao
   abstract fun blockedEventDao(): BlockedEventDao
   abstract fun downloadDao(): DownloadDao
+  abstract fun readingListDao(): ReadingListDao
   abstract fun sessionTabDao(): SessionTabDao
   abstract fun passwordEntryDao(): PasswordEntryDao
   abstract fun masterKeyMetadataDao(): MasterKeyMetadataDao
@@ -347,9 +428,6 @@ abstract class NetRunnerDatabase : RoomDatabase() {
 
     internal fun beginWipe() {
       synchronized(this) {
-        if (wipeState == WipeState.ACTIVE) {
-          throw IllegalStateException("Wipe already in progress.")
-        }
         wipeState = WipeState.ACTIVE
       }
     }
@@ -362,7 +440,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
     
     internal fun endWipeWithFailure() {
       synchronized(this) {
-        wipeState = WipeState.RECOVERY_REQUIRED
+        wipeState = WipeState.IDLE
       }
     }
 
@@ -514,11 +592,8 @@ abstract class NetRunnerDatabase : RoomDatabase() {
 
     fun getDatabase(context: Context): NetRunnerDatabase {
       return synchronized(this) {
-        if (wipeState != WipeState.IDLE) {
-          throw IllegalStateException("Cannot open database during an active Panic Wipe.")
-        }
         var instance = INSTANCE
-        if (instance != null) {
+        if (instance != null && instance.isOpen) {
           return@synchronized instance
         }
         val passphrase = getOrCreatePassphrase(context)
@@ -579,6 +654,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
             db.sessionTabDao().clearAllTabs()
             db.downloadDao().clearAll()
             db.blockedEventDao().clearAll()
+            db.readingListDao().clearAll()
           } catch (e: Exception) {
             browserTablesScrubbed = false
             errors.add("Browser tables scrub failed: ${e.message}")

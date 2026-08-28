@@ -1,6 +1,7 @@
 package com.remmi.browser.ui.components
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,11 +34,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.GraphicEq
@@ -44,6 +51,7 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
@@ -63,8 +71,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -98,6 +109,8 @@ import com.remmi.browser.reader.ReaderParagraph
 import com.remmi.browser.reader.ReaderSpeechManager
 import com.remmi.browser.reader.ReaderTranslator
 import com.remmi.browser.reader.TtsPlayState
+import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.ReadingListItem
 import com.remmi.browser.ui.theme.ThemeCyber
 import kotlinx.coroutines.launch
 
@@ -146,6 +159,7 @@ fun ReaderView(
   var showAudioPlayer by remember { mutableStateOf(false) }
   var showTranslateSheet by remember { mutableStateOf(false) }
   var showExportSheet by remember { mutableStateOf(false) }
+  var showSaveSheet by remember { mutableStateOf(false) }
   var isHighlightMode by remember { mutableStateOf(false) }
   var activeHighlightColor by remember { mutableStateOf("#FFEB3B") } // Yellow
   var isUnderlineMode by remember { mutableStateOf(false) }
@@ -177,16 +191,6 @@ fun ReaderView(
     }
   }
 
-  // Auto scroll to current paragraph being spoken
-  LaunchedEffect(speechState.currentParagraphIndex) {
-    if (speechState.playState == TtsPlayState.PLAYING) {
-      val total = speechState.totalParagraphs.coerceAtLeast(1)
-      val current = speechState.currentParagraphIndex.coerceAtLeast(0)
-      val targetScroll = (scrollState.maxValue * (current.toFloat() / total)).toInt()
-      scrollState.animateScrollTo(targetScroll)
-    }
-  }
-
   val fontSize = when (fontSizeIndex) {
     0 -> 14.sp
     1 -> 17.sp
@@ -201,6 +205,29 @@ fun ReaderView(
   }
 
   val displayArticle = if (isShowingOriginal) article else currentArticle
+
+  // Database and Saved State
+  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  var isArticleSaved by remember { mutableStateOf(false) }
+
+  LaunchedEffect(displayArticle?.sourceUrl) {
+    displayArticle?.sourceUrl?.let { url ->
+      if (url.isNotBlank()) {
+        val existing = database.readingListDao().getReadingByUrl(url)
+        isArticleSaved = existing != null
+      }
+    }
+  }
+
+  // Auto scroll to current paragraph being spoken
+  LaunchedEffect(speechState.currentParagraphIndex) {
+    if (speechState.playState == TtsPlayState.PLAYING) {
+      val total = speechState.totalParagraphs.coerceAtLeast(1)
+      val current = speechState.currentParagraphIndex.coerceAtLeast(0)
+      val targetScroll = (scrollState.maxValue * (current.toFloat() / total)).toInt()
+      scrollState.animateScrollTo(targetScroll)
+    }
+  }
 
   // Calculate reading progress (0.0f to 1.0f)
   val readingProgress = if (scrollState.maxValue > 0) {
@@ -297,11 +324,35 @@ fun ReaderView(
               }
             }
 
-            // Right Quick Actions (Share & Quick Exit)
+            // Right Quick Actions (Save, Share & Quick Exit)
             Row(
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+              // Save to Reading List / Offline Button
+              IconButton(
+                onClick = {
+                  showSaveSheet = true
+                },
+                modifier = Modifier
+                  .size(36.dp)
+                  .clip(RoundedCornerShape(8.dp))
+                  .background(if (isArticleSaved) Color(0xFFF59E0B).copy(alpha = 0.2f) else readerTheme.background)
+                  .border(
+                    0.6.dp,
+                    if (isArticleSaved) Color(0xFFF59E0B) else readerTheme.accentColor.copy(alpha = 0.25f),
+                    RoundedCornerShape(8.dp)
+                  )
+                  .testTag("reader_save_reading_list_btn")
+              ) {
+                Icon(
+                  imageVector = if (isArticleSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                  contentDescription = "Save to Reading List",
+                  tint = if (isArticleSaved) Color(0xFFF59E0B) else readerTheme.accentColor,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+
               IconButton(
                 onClick = {
                   displayArticle?.let { art ->
@@ -1355,6 +1406,21 @@ fun ReaderView(
 
         // Export Options
         ExportOptionTile(
+          icon = Icons.Default.Bookmark,
+          title = "Save to Reading List (Offline Available)",
+          subtitle = "Save folder-wise with tags & full offline cached article",
+          accentColor = Color(0xFFF59E0B),
+          textColor = readerTheme.textColor,
+          surfaceColor = readerTheme.background,
+          onClick = {
+            showExportSheet = false
+            showSaveSheet = true
+          }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        ExportOptionTile(
           icon = Icons.Default.PictureAsPdf,
           title = "Print / Export as PDF",
           subtitle = "Clean paginated document with headers and sources",
@@ -1440,6 +1506,355 @@ fun ReaderView(
             }
           }
         )
+
+        Spacer(modifier = Modifier.height(24.dp))
+      }
+    }
+  }
+
+  // 4. Save to Reading List Folder-wise Bottom Sheet
+  if (showSaveSheet) {
+    val existingFolders by database.readingListDao().getAllFolders().collectAsState(initial = emptyList())
+    val defaultFolders = listOf("General", "Technology", "Research", "News", "AI & Science", "Crypto & Privacy", "Read Later")
+    val combinedFolders = remember(existingFolders) {
+      (defaultFolders + existingFolders).distinct().filter { it.isNotBlank() }
+    }
+
+    var selectedFolder by remember { mutableStateOf("General") }
+    var isCustomFolderMode by remember { mutableStateOf(false) }
+    var customFolderInput by remember { mutableStateOf("") }
+    var topicInput by remember {
+      val domainPart = displayArticle?.sourceUrl?.let { url ->
+        try {
+          android.net.Uri.parse(url).host?.removePrefix("www.") ?: ""
+        } catch (e: Exception) { "" }
+      } ?: ""
+      mutableStateOf(if (domainPart.isNotBlank()) domainPart else "General")
+    }
+    var notesInput by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+      onDismissRequest = { showSaveSheet = false },
+      containerColor = readerTheme.surfaceColor,
+      sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 20.dp, vertical = 10.dp)
+          .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+      ) {
+        // Header
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Default.Bookmark,
+              contentDescription = null,
+              tint = Color(0xFFF59E0B),
+              modifier = Modifier.size(22.dp)
+            )
+            Text(
+              text = "SAVE TO READING LIST",
+              fontFamily = ThemeCyber.fontFamily,
+              fontSize = 15.sp,
+              fontWeight = FontWeight.Bold,
+              color = readerTheme.textColor
+            )
+          }
+
+          Surface(
+            shape = RoundedCornerShape(4.dp),
+            color = Color(0xFF10B981).copy(alpha = 0.15f),
+            border = BorderStroke(0.5.dp, Color(0xFF10B981).copy(alpha = 0.4f))
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Default.OfflinePin,
+                contentDescription = null,
+                tint = Color(0xFF10B981),
+                modifier = Modifier.size(12.dp)
+              )
+              Text(
+                text = "100% Offline Ready",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF10B981)
+              )
+            }
+          }
+        }
+
+        // Article Info Preview Card
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = readerTheme.background,
+          border = BorderStroke(0.6.dp, readerTheme.accentColor.copy(alpha = 0.25f)),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Column(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            Text(
+              text = displayArticle?.activeTitle ?: "Untitled Article",
+              fontFamily = fontChoice.fontFamily,
+              fontSize = 14.sp,
+              fontWeight = FontWeight.Bold,
+              color = readerTheme.textColor,
+              maxLines = 2,
+              overflow = TextOverflow.Ellipsis
+            )
+
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              val domain = try {
+                android.net.Uri.parse(displayArticle?.sourceUrl ?: "").host?.removePrefix("www.") ?: "web"
+              } catch (e: Exception) { "web" }
+              
+              Text(
+                text = "🌐 $domain",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = readerTheme.accentColor
+              )
+
+              Text(
+                text = "•",
+                fontSize = 11.sp,
+                color = readerTheme.textColor.copy(alpha = 0.5f)
+              )
+
+              Text(
+                text = "⏱ ~${displayArticle?.readingTimeMinutes ?: 1} min read (${displayArticle?.wordCount ?: 0} words)",
+                fontSize = 11.sp,
+                color = readerTheme.textColor.copy(alpha = 0.7f)
+              )
+            }
+          }
+        }
+
+        // Section 1: Choose Folder
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "Select Reading Folder:",
+              fontFamily = ThemeCyber.fontFamily,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold,
+              color = readerTheme.textColor
+            )
+
+            TextButton(
+              onClick = { isCustomFolderMode = !isCustomFolderMode }
+            ) {
+              Icon(
+                imageVector = if (isCustomFolderMode) Icons.Default.Folder else Icons.Default.Add,
+                contentDescription = null,
+                tint = Color(0xFFF59E0B),
+                modifier = Modifier.size(14.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = if (isCustomFolderMode) "Pick Existing" else "+ New Folder",
+                fontSize = 11.sp,
+                color = Color(0xFFF59E0B),
+                fontWeight = FontWeight.Bold
+              )
+            }
+          }
+
+          if (isCustomFolderMode) {
+            OutlinedTextField(
+              value = customFolderInput,
+              onValueChange = { customFolderInput = it },
+              label = { Text("New Folder Name", fontSize = 12.sp) },
+              placeholder = { Text("e.g. Science, Crypto, Deep Dives", fontSize = 12.sp) },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth(),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFFF59E0B),
+                unfocusedBorderColor = readerTheme.accentColor.copy(alpha = 0.3f),
+                focusedTextColor = readerTheme.textColor,
+                unfocusedTextColor = readerTheme.textColor
+              )
+            )
+          } else {
+            // Folder Chips Flow / Wrap
+            androidx.compose.foundation.lazy.LazyRow(
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              items(combinedFolders.size) { index ->
+                val folderName = combinedFolders[index]
+                val isSelected = selectedFolder.equals(folderName, ignoreCase = true)
+                Surface(
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isSelected) Color(0xFFF59E0B).copy(alpha = 0.2f) else readerTheme.background,
+                  border = BorderStroke(
+                    width = if (isSelected) 1.5.dp else 0.6.dp,
+                    color = if (isSelected) Color(0xFFF59E0B) else readerTheme.accentColor.copy(alpha = 0.25f)
+                  ),
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { selectedFolder = folderName }
+                ) {
+                  Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.Folder,
+                      contentDescription = null,
+                      tint = if (isSelected) Color(0xFFF59E0B) else readerTheme.textColor.copy(alpha = 0.6f),
+                      modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                      text = folderName,
+                      fontSize = 12.sp,
+                      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                      color = if (isSelected) Color(0xFFF59E0B) else readerTheme.textColor
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Section 2: Topic / Tags Input
+        OutlinedTextField(
+          value = topicInput,
+          onValueChange = { topicInput = it },
+          label = { Text("Topic / Tag (Optional)", fontSize = 12.sp) },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth(),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = readerTheme.accentColor,
+            unfocusedBorderColor = readerTheme.accentColor.copy(alpha = 0.3f),
+            focusedTextColor = readerTheme.textColor,
+            unfocusedTextColor = readerTheme.textColor
+          )
+        )
+
+        // Section 3: Personal Notes (Optional)
+        OutlinedTextField(
+          value = notesInput,
+          onValueChange = { notesInput = it },
+          label = { Text("Personal Notes (Optional)", fontSize = 12.sp) },
+          maxLines = 2,
+          modifier = Modifier.fillMaxWidth(),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = readerTheme.accentColor,
+            unfocusedBorderColor = readerTheme.accentColor.copy(alpha = 0.3f),
+            focusedTextColor = readerTheme.textColor,
+            unfocusedTextColor = readerTheme.textColor
+          )
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Save Action Button
+        Button(
+          onClick = {
+            val art = displayArticle
+            if (art != null) {
+              isSaving = true
+              val targetFolder = if (isCustomFolderMode && customFolderInput.isNotBlank()) {
+                customFolderInput.trim()
+              } else {
+                selectedFolder.trim()
+              }
+              val hostDomain = try {
+                android.net.Uri.parse(art.sourceUrl).host?.removePrefix("www.") ?: "web"
+              } catch (e: Exception) { "web" }
+
+              val readingItem = ReadingListItem(
+                url = art.sourceUrl,
+                title = art.activeTitle.ifBlank { "Untitled Article" },
+                domain = hostDomain,
+                siteName = art.siteName,
+                byline = art.byline,
+                excerpt = art.excerpt,
+                contentJson = art.toJson(),
+                folder = targetFolder.ifBlank { "General" },
+                topic = topicInput.trim().ifBlank { "General" },
+                readingTimeMinutes = art.readingTimeMinutes,
+                wordCount = art.wordCount,
+                leadImageUrl = art.leadImageUrl,
+                notes = notesInput.trim(),
+                savedAt = System.currentTimeMillis()
+              )
+
+              scope.launch {
+                database.readingListDao().insert(readingItem)
+                isArticleSaved = true
+                isSaving = false
+                showSaveSheet = false
+                Toast.makeText(
+                  context,
+                  "Article saved to '${targetFolder}' for offline reading!",
+                  Toast.LENGTH_SHORT
+                ).show()
+              }
+            }
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .testTag("reader_confirm_save_btn"),
+          enabled = !isSaving
+        ) {
+          if (isSaving) {
+            CircularProgressIndicator(
+              color = Color.Black,
+              modifier = Modifier.size(20.dp),
+              strokeWidth = 2.dp
+            )
+          } else {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Default.Bookmark,
+                contentDescription = null,
+                tint = Color.Black,
+                modifier = Modifier.size(18.dp)
+              )
+              Text(
+                text = "Save for Offline Reading",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+              )
+            }
+          }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
       }

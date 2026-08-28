@@ -225,6 +225,7 @@ fun BrowserScreen(
   var showHistoryBookmarksSheet by remember { mutableStateOf(false) }
   var historyBookmarksInitialTab by remember { mutableIntStateOf(0) }
   var showDownloadsSheet by remember { mutableStateOf(false) }
+  var showReadingListScreen by remember { mutableStateOf(false) }
   var showMenuDropdown by remember { mutableStateOf(false) }
   var showDevMenuDialog by remember { mutableStateOf(false) }
   var showPanicWipeDialog by remember { mutableStateOf(false) }
@@ -768,6 +769,7 @@ fun BrowserScreen(
               showHistoryBookmarksSheet = true
             },
             onOpenDownloads = { showDownloadsSheet = true },
+            onOpenReadingList = { showReadingListScreen = true },
             onOpenSettings = onOpenSettings,
             onToggleDesktop = { tabManager.toggleDesktopMode(activeTab.id) },
             onToggleGhost = handleToggleGhostMode,
@@ -1259,6 +1261,31 @@ fun BrowserScreen(
                 onClick = {
                   showMenuDropdown = false
                   tabManager.toggleReaderMode(activeTab.id)
+                }
+              )
+
+              // Reading List / Offline Articles
+              DropdownMenuItem(
+                text = {
+                  Text(
+                    "Reading List",
+                    color = ThemeCyber.colors.textPrimary,
+                    fontFamily = ThemeCyber.fontFamily,
+                    fontSize = 13.5.sp,
+                  )
+                },
+                leadingIcon = {
+                  Icon(
+                    Icons.Default.Bookmark,
+                    contentDescription = null,
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.size(18.dp)
+                  )
+                },
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                onClick = {
+                  showMenuDropdown = false
+                  showReadingListScreen = true
                 }
               )
 
@@ -1864,6 +1891,17 @@ fun BrowserScreen(
         onDismiss = { showDownloadsSheet = false },
       )
     }
+  }
+
+  // 5.1. Reading List / Offline Saved Articles Screen
+  if (showReadingListScreen) {
+    ReadingListScreen(
+      onOpenUrl = { url ->
+        tabManager.updateTab(activeTab.id) { it.copy(url = url, isReaderMode = false, readerArticle = null) }
+        showReadingListScreen = false
+      },
+      onDismiss = { showReadingListScreen = false }
+    )
   }
 
   // 6. Long Press Context Menu Sheet (Links & Images matching user design)

@@ -119,6 +119,7 @@ fun NewTabPage(
   onOpenHistory: () -> Unit = {},
   onOpenDownloads: () -> Unit = {},
   onOpenSettings: () -> Unit = {},
+  onOpenReadingList: () -> Unit = {},
   onToggleDesktop: () -> Unit = {},
   onToggleGhost: () -> Unit = {},
   onToggleReader: () -> Unit = {},
@@ -238,30 +239,25 @@ fun NewTabPage(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        // SECURE / GHOST / TOR STATUS PILL (LEFT)
-        val isTorConnected = torState is TorManager.TorState.READY
+        // SECURE / TOR STATUS PILL (LEFT)
+        val isTorConnected = torState is TorManager.TorState.READY || profile == PrivacyProfile.GHOST || profile == PrivacyProfile.INCOGNITO
         val pillBg = when {
-          profile == PrivacyProfile.GHOST || isTorConnected -> ThemeCyber.colors.torPurple.copy(alpha = if (isLight) 0.12f else 0.25f)
-          profile == PrivacyProfile.INCOGNITO -> ThemeCyber.colors.primary.copy(alpha = if (isLight) 0.12f else 0.22f)
+          isTorConnected -> ThemeCyber.colors.torPurple.copy(alpha = if (isLight) 0.12f else 0.25f)
           isLight -> Color(0xFFE8F5E9)
           else -> Color(0xFF10281E)
         }
         val pillBorder = when {
-          profile == PrivacyProfile.GHOST || isTorConnected -> ThemeCyber.colors.torPurple.copy(alpha = 0.6f)
-          profile == PrivacyProfile.INCOGNITO -> ThemeCyber.colors.primary.copy(alpha = 0.6f)
+          isTorConnected -> ThemeCyber.colors.torPurple.copy(alpha = 0.6f)
           isLight -> Color(0xFFA5D6A7)
           else -> Color(0xFF2E7D32)
         }
         val pillContentColor = when {
-          profile == PrivacyProfile.GHOST || isTorConnected -> ThemeCyber.colors.torPurple
-          profile == PrivacyProfile.INCOGNITO -> ThemeCyber.colors.primary
+          isTorConnected -> ThemeCyber.colors.torPurple
           isLight -> Color(0xFF2E7D32)
           else -> Color(0xFF4CAF50)
         }
         val pillLabel = when {
-          profile == PrivacyProfile.GHOST -> "GHOST MODE"
           isTorConnected -> "TOR ONION"
-          profile == PrivacyProfile.INCOGNITO -> "INCOGNITO"
           else -> "SECURE"
         }
 
@@ -280,12 +276,21 @@ fun NewTabPage(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
           ) {
-            Icon(
-              imageVector = if (profile == PrivacyProfile.GHOST) Icons.Default.VpnKey else Icons.Default.Shield,
-              contentDescription = "Security Status",
-              tint = pillContentColor,
-              modifier = Modifier.size(15.dp)
-            )
+            if (isTorConnected) {
+              Icon(
+                painter = painterResource(R.drawable.ic_tor),
+                contentDescription = "Tor Status",
+                tint = pillContentColor,
+                modifier = Modifier.size(15.dp)
+              )
+            } else {
+              Icon(
+                imageVector = Icons.Default.Shield,
+                contentDescription = "Security Status",
+                tint = pillContentColor,
+                modifier = Modifier.size(15.dp)
+              )
+            }
             Text(
               text = pillLabel,
               color = pillContentColor,
@@ -848,21 +853,21 @@ fun NewTabPage(
               onClick = onOpenDownloads
             )
 
-            // 4. Reading List / Reader Mode
+            // 4. Reading List / Offline Articles
             QuickActionItem(
               icon = Icons.Default.MenuBook,
               label = "Reading List",
               isLight = isLight,
               accentColor = Color(0xFFF59E0B),
-              onClick = onToggleReader
+              onClick = onOpenReadingList
             )
 
-            // 5. Incognito / Ghost Mode
+            // 5. Tor Privacy Network / Onion Mode
             QuickActionItem(
-              icon = if (profile == PrivacyProfile.GHOST) Icons.Default.VpnKey else Icons.Default.VisibilityOff,
-              label = "Incognito",
+              icon = Icons.Default.VpnKey,
+              label = "Tor",
               isLight = isLight,
-              accentColor = Color(0xFFEC4899),
+              accentColor = Color(0xFFA855F7),
               onClick = onToggleGhost
             )
           }

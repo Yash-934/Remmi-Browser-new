@@ -52,6 +52,70 @@ data class ReaderArticle(
 
   val activeTitle: String
     get() = translatedTitle ?: title
+
+  val wordCount: Int
+    get() = paragraphs.sumOf { p ->
+      if (p.text.isBlank()) 0
+      else p.text.trim().split("\\s+".toRegex()).size
+    }
+
+  fun toJson(): String {
+    val root = JSONObject()
+    root.put("title", title)
+    root.put("byline", byline)
+    root.put("siteName", siteName)
+    root.put("excerpt", excerpt)
+    root.put("readingTimeMinutes", readingTimeMinutes)
+    root.put("sourceUrl", sourceUrl)
+    if (leadImageUrl != null) root.put("leadImageUrl", leadImageUrl)
+    val parArray = org.json.JSONArray()
+    paragraphs.forEach { p ->
+      val pObj = JSONObject()
+      pObj.put("index", p.index)
+      pObj.put("text", p.text)
+      pObj.put("isHeading", p.isHeading)
+      pObj.put("headingLevel", p.headingLevel)
+      parArray.put(pObj)
+    }
+    root.put("paragraphs", parArray)
+    return root.toString()
+  }
+
+  companion object {
+    fun fromJson(jsonStr: String): ReaderArticle? {
+      if (jsonStr.isBlank()) return null
+      return try {
+        val root = JSONObject(jsonStr)
+        val pars = mutableListOf<ReaderParagraph>()
+        val parArray = root.optJSONArray("paragraphs")
+        if (parArray != null) {
+          for (i in 0 until parArray.length()) {
+            val pObj = parArray.getJSONObject(i)
+            pars.add(
+              ReaderParagraph(
+                index = pObj.optInt("index", i),
+                text = pObj.optString("text", ""),
+                isHeading = pObj.optBoolean("isHeading", false),
+                headingLevel = pObj.optInt("headingLevel", 0)
+              )
+            )
+          }
+        }
+        ReaderArticle(
+          title = root.optString("title", ""),
+          byline = root.optString("byline", ""),
+          siteName = root.optString("siteName", ""),
+          excerpt = root.optString("excerpt", ""),
+          paragraphs = pars,
+          readingTimeMinutes = root.optInt("readingTimeMinutes", 1),
+          sourceUrl = root.optString("sourceUrl", ""),
+          leadImageUrl = if (root.has("leadImageUrl") && !root.isNull("leadImageUrl")) root.optString("leadImageUrl") else null
+        )
+      } catch (e: Exception) {
+        null
+      }
+    }
+  }
 }
 
 object ReaderExtractor {
