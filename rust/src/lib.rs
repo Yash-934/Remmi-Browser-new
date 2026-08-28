@@ -9,6 +9,7 @@ use adblock::request::Request;
 
 struct AdblockEngineState {
     engine: Option<Engine>,
+    filter_count: u64,
     blocked_count: u64,
     allowed_count: u64,
 }
@@ -16,17 +17,21 @@ struct AdblockEngineState {
 lazy_static! {
     static ref GLOBAL_STATE: RwLock<AdblockEngineState> = RwLock::new(AdblockEngineState {
         engine: None,
+        filter_count: 0,
         blocked_count: 0,
         allowed_count: 0,
     });
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeInit(
+pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeInit(
     _env: JNIEnv,
     _class: JClass,
 ) -> jboolean {
-    let mut state = GLOBAL_STATE.write().unwrap();
+    let mut state = match GLOBAL_STATE.write() {
+        Ok(guard) => guard,
+        Err(_) => return JNI_FALSE,
+    };
     let mut filter_set = FilterSet::new(true);
     let default_rules = vec![
         "||google-analytics.com^$third-party",
@@ -41,6 +46,7 @@ pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeInit(
         "||adnxs.com^$third-party",
     ];
     filter_set.add_filters(&default_rules, ParseOptions::default());
+    state.filter_count = default_rules.len() as u64;
     state.engine = Some(Engine::from_filter_set(filter_set, true));
     state.blocked_count = 0;
     state.allowed_count = 0;
@@ -48,7 +54,7 @@ pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeInit(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeCheckUrl(
+pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeMatches(
     mut env: JNIEnv,
     _class: JClass,
     url: JString,
@@ -87,7 +93,7 @@ pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeCheckUrl(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeAddRules(
+pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeCompileRules(
     mut env: JNIEnv,
     _class: JClass,
     rules_text: JString,
@@ -112,24 +118,40 @@ pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeAddRules(
     } else {
         state.engine = Some(Engine::from_filter_set(filter_set, true));
     }
+    state.filter_count = count as u64;
     count
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeGetBlockedCount(
+pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeGetFilterCount(
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
-    let state = GLOBAL_STATE.read().unwrap();
+    let state = match GLOBAL_STATE.read() {
+        Ok(guard) => guard,
+        Err(_) => return 0,
+    };
+    state.filter_count as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeGetBlockedCount(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    let state = match GLOBAL_STATE.read() {
+        Ok(guard) => guard,
+        Err(_) => return 0,
+    };
     state.blocked_count as jint
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_example_adblock_AdblockBridge_nativeGetVersion(
+pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeGetVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    let version = "adblock-rust-0.8.0-netrunner";
+    let version = "adblock-rust-0.8.0-remmi";
     let output = env.new_string(version).expect("Couldn't create java string!");
     output.into_raw()
 }

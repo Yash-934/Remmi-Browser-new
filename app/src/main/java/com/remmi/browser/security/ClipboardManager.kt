@@ -65,7 +65,7 @@ class ClipboardManager(private val context: Context) {
           trimmed.startsWith("https://", ignoreCase = true) ||
           trimmed.startsWith("ftp://", ignoreCase = true) ||
           trimmed.startsWith("about:", ignoreCase = true) ||
-          trimmed.startsWith("netrunner://", ignoreCase = true)) {
+          trimmed.startsWith("remmi://", ignoreCase = true)) {
         return true
       }
       // Check for domain pattern like domain.tld or sub.domain.tld

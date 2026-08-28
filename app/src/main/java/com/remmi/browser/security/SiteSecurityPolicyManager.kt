@@ -16,7 +16,7 @@ data class SiteSecuritySettings(
   val customSecurityLevel: SecurityLevel? = null
 )
 
-class SiteSecurityPolicyManager private constructor(context: Context) {
+class SiteSecurityPolicyManager private constructor(private val context: Context) {
   private val prefs: SharedPreferences = context.getSharedPreferences("remmi_site_security_prefs", Context.MODE_PRIVATE)
 
   private val _policies = MutableStateFlow<Map<String, SiteSecuritySettings>>(loadPolicies())
@@ -75,11 +75,21 @@ class SiteSecurityPolicyManager private constructor(context: Context) {
     }
     prefs.edit().putString(cleanHost, json.toString()).apply()
     _policies.value = _policies.value + (cleanHost to settings)
+
+    // Dynamically apply to active sessions
+    try {
+      com.remmi.browser.engine.GeckoEngineManager.getInstance(context).applySiteSecurityPolicyToMatchingTabs(cleanHost)
+    } catch (_: Exception) {}
   }
 
   fun removePolicy(host: String) {
     val cleanHost = host.lowercase().trim()
     prefs.edit().remove(cleanHost).apply()
     _policies.value = _policies.value - cleanHost
+
+    // Dynamically re-apply default tab policy to active sessions
+    try {
+      com.remmi.browser.engine.GeckoEngineManager.getInstance(context).applySiteSecurityPolicyToMatchingTabs(cleanHost)
+    } catch (_: Exception) {}
   }
 }

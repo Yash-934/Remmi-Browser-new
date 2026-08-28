@@ -2,14 +2,38 @@ package com.remmi.browser
 
 import android.app.Application
 import android.util.Log
-import com.netrunner.adblock.AdblockBridge
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import com.remmi.adblock.AdblockBridge
 import com.remmi.browser.engine.GeckoEngineManager
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.security.CurrentTorRoute
+import com.remmi.browser.security.NetworkRouteAuthority
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.SettingsRepository
+import okhttp3.Call
 import java.io.File
 import java.util.concurrent.Executors
 
-class RemmiApp : Application() {
+class RemmiApp : Application(), ImageLoaderFactory {
+
+  override fun newImageLoader(): ImageLoader {
+    val callFactory = Call.Factory { request ->
+      val targetUrl = request.url.toString()
+      val isGhost = CurrentTorRoute.isGhostActive || NetworkRouteAuthority.isOnionDestination(targetUrl)
+      val client = NetworkRouteAuthority.createHttpClient(
+        isGhost = isGhost,
+        targetUrl = targetUrl,
+        connectTimeoutSeconds = 10L,
+        readTimeoutSeconds = 15L
+      )
+      client.newCall(request)
+    }
+
+    return ImageLoader.Builder(this)
+      .callFactory(callFactory)
+      .crossfade(true)
+      .build()
+  }
 
   override fun onCreate() {
     super.onCreate()
@@ -23,7 +47,7 @@ class RemmiApp : Application() {
       try {
         Log.i("RemmiApp", "Background initialization started...")
         AdblockBridge.getInstance()
-        NetRunnerDatabase.getDatabase(this)
+        RemmiDatabase.getDatabase(this)
         SettingsRepository.getInstance(this)
         Log.i("RemmiApp", "Background initialization completed.")
       } catch (e: Throwable) {

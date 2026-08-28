@@ -72,7 +72,7 @@ import com.remmi.browser.security.TorCircuit
 import com.remmi.browser.security.TorManager
 import com.remmi.browser.storage.BookmarkItem
 import com.remmi.browser.storage.HistoryItem
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.SearchEngine
 import com.remmi.browser.storage.SpeedDialItem
 import com.remmi.browser.ui.theme.CyberMonoFamily
@@ -135,7 +135,7 @@ fun NewTabPage(
   val context = LocalContext.current
   val focusManager = LocalFocusManager.current
   val clipboard = remember { ClipboardManager(context) }
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val scrollState = rememberScrollState()
 
   var searchQuery by remember { mutableStateOf("") }

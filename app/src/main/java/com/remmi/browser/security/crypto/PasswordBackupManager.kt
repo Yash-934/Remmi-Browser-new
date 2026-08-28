@@ -34,12 +34,12 @@ data class RestoredEntry(
 )
 
 /**
- * Encrypted Backup & Restore Manager for NetRunner Password Vault.
+ * Encrypted Backup & Restore Manager for Remmi Password Vault.
  * Provides bank-grade export with Argon2id + AES-256-GCM + HMAC-SHA256 tamper verification.
  */
 object PasswordBackupManager {
 
-  private const val BACKUP_HMAC_KEY_SALT = "NetRunner_Vault_Backup_HMAC_Integrity"
+  private const val BACKUP_HMAC_KEY_SALT = "Remmi_Vault_Backup_HMAC_Integrity"
 
   fun exportEncryptedBackup(
     entries: List<PasswordEntryEntity>,
@@ -89,7 +89,7 @@ object PasswordBackupManager {
 
       val exportJson = JSONObject().apply {
         put("remmi_vault_backup", true)
-        put("netrunner_vault_backup", true)
+        put("remmi_vault_backup", true)
         put("version", 1)
         put("device_bound", exportPassword == null || exportPassword.isEmpty())
         put("entries_count", entries.size)
@@ -116,7 +116,7 @@ object PasswordBackupManager {
     currentDek: ByteArray,
   ): Pair<ByteArray, List<RestoredEntry>> {
     val root = JSONObject(backupJsonString)
-    if (!root.optBoolean("remmi_vault_backup", false) && !root.optBoolean("netrunner_vault_backup", false)) {
+    if (!root.optBoolean("remmi_vault_backup", false) && !root.optBoolean("remmi_vault_backup", false)) {
       throw IllegalArgumentException("Invalid backup file: Not a Remmi Vault backup.")
     }
 

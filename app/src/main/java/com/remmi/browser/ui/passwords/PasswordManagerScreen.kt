@@ -1960,7 +1960,7 @@ private fun BackupRestoreDialog(
                 isProcessing = true
                 processingStatus = "Deriving Argon2id keys (AES-256-GCM)..."
                 scope.launch {
-                  val entities = com.remmi.browser.storage.NetRunnerDatabase.getDatabase(context).passwordEntryDao().getAllEntriesList()
+                  val entities = com.remmi.browser.storage.RemmiDatabase.getDatabase(context).passwordEntryDao().getAllEntriesList()
                   val backupJson = PasswordBackupManager.exportEncryptedBackup(
                     entries = entities,
                     exportPassword = if (backupPassword.isNotBlank()) backupPassword.toCharArray() else null,

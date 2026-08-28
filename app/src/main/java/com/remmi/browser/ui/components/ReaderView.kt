@@ -109,7 +109,7 @@ import com.remmi.browser.reader.ReaderParagraph
 import com.remmi.browser.reader.ReaderSpeechManager
 import com.remmi.browser.reader.ReaderTranslator
 import com.remmi.browser.reader.TtsPlayState
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.ReadingListItem
 import com.remmi.browser.ui.theme.ThemeCyber
 import kotlinx.coroutines.launch
@@ -207,7 +207,7 @@ fun ReaderView(
   val displayArticle = if (isShowingOriginal) article else currentArticle
 
   // Database and Saved State
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   var isArticleSaved by remember { mutableStateOf(false) }
 
   LaunchedEffect(displayArticle?.sourceUrl) {

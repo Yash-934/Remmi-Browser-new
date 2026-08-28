@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.remmi.browser.reader.ReaderArticle
 import com.remmi.browser.reader.ReaderExporter
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.ReadingListItem
 import com.remmi.browser.ui.components.ReaderView
 import com.remmi.browser.ui.theme.ThemeCyber
@@ -67,7 +67,7 @@ fun ReadingListScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val focusManager = LocalFocusManager.current
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val isLight = ThemeCyber.colors.isLight
 
   // Theme Colors

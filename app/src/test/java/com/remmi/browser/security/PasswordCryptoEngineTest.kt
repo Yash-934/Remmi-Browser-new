@@ -121,7 +121,7 @@ class PasswordCryptoEngineTest {
         id = 2L,
         siteUrlHash = "https://mail.cyber.local".hashCode().toString(),
         siteUrlEncrypted = "https://mail.cyber.local".toByteArray(),
-        usernameEncrypted = "secops@netrunner.local".toByteArray(),
+        usernameEncrypted = "secops@remmi.local".toByteArray(),
         passwordEncrypted = "MailSecret999!".toByteArray(),
         notesEncrypted = "Encrypted mail server".toByteArray(),
         iv = ByteArray(12),
@@ -134,14 +134,14 @@ class PasswordCryptoEngineTest {
     // Export
     val backupJsonString = PasswordBackupManager.exportEncryptedBackup(entries, backupPassword, dek)
     assertNotNull(backupJsonString)
-    assertTrue(backupJsonString.contains("netrunner_vault_backup"))
+    assertTrue(backupJsonString.contains("remmi_vault_backup"))
 
     // Import
     val (importedDek, importedEntries) = PasswordBackupManager.importEncryptedBackup(backupJsonString, backupPassword, dek)
     assertEquals(2, importedEntries.size)
     assertEquals("https://bank.cyber.local".hashCode().toString(), importedEntries[0].siteUrlHash)
     assertEquals("agent_007", String(importedEntries[0].usernameEncrypted))
-    assertEquals("secops@netrunner.local", String(importedEntries[1].usernameEncrypted))
+    assertEquals("secops@remmi.local", String(importedEntries[1].usernameEncrypted))
     assertNotNull(importedDek)
   }
 

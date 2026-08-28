@@ -106,7 +106,7 @@ import com.remmi.browser.security.TorManager
 import com.remmi.browser.security.TorStatusChecker
 import com.remmi.browser.storage.BookmarkItem
 import com.remmi.browser.storage.HistoryItem
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.SearchEngine
 import com.remmi.browser.storage.SessionTabEntity
 import com.remmi.browser.storage.SettingsRepository
@@ -165,7 +165,7 @@ fun BrowserScreen(
   
   val torManager = remember { TorManager.getInstance(context) }
   val geckoEngine = remember { com.remmi.browser.engine.GeckoEngineManager.getInstance(context) }
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val clipboardMgr = remember { ClipboardManager(context) }
   val settingsRepo = remember { SettingsRepository.getInstance(context) }
   val passwordRepo = remember { com.remmi.browser.security.PasswordManagerRepository.getInstance(context) }
@@ -204,15 +204,8 @@ fun BrowserScreen(
     settings.doNotTrackEnabled,
     settings.strictReferrerPolicy,
     settings.httpsOnlyMode,
-    activeTab.profile,
-    activeTab.securityLevel
   ) {
-    com.remmi.browser.security.NetworkHardening.resetAppliedState()
-    geckoEngine.applyPrivacyProfile(
-      profile = activeTab.profile,
-      securityLevel = activeTab.securityLevel,
-      settings = settings
-    )
+    geckoEngine.updateGlobalPreferences(settings)
   }
 
   var showTabGridSheet by remember { mutableStateOf(false) }
@@ -233,7 +226,7 @@ fun BrowserScreen(
 
   // Register Click Transparency Inspector callback from WebExtension
   LaunchedEffect(Unit) {
-    com.netrunner.adblock.BlockExtension.getInstance().onClickInspected = { candidatesJson, hasOverlay, intercepted, _pageUrl ->
+    com.remmi.adblock.BlockExtension.getInstance().onClickInspected = { candidatesJson, hasOverlay, intercepted, _pageUrl ->
       val inspection = ClickTargetAnalyzer.fromExtensionJson(candidatesJson, hasOverlay)
       if (intercepted || inspection.hasOverlay || inspection.candidates.size > 1) {
         scope.launch(Dispatchers.Main) {
@@ -402,8 +395,7 @@ fun BrowserScreen(
     } else {
       // Switching BACK to Shield mode
       scope.launch {
-        val anyOtherGhostTab = tabs.any { it.id != activeTab.id && it.profile == PrivacyProfile.GHOST }
-        privacyController.enterShieldMode(activeTab.id, otherGhostTabsExist = anyOtherGhostTab)
+        privacyController.enterShieldMode(activeTab.id)
         tabManager.updateTab(activeTab.id) { it.copy(profile = PrivacyProfile.SHIELD) }
         withContext(Dispatchers.Main) {
           android.widget.Toast.makeText(
@@ -474,7 +466,7 @@ fun BrowserScreen(
     }
   }
 
-  val isNewTab = activeTab.url.isBlank() || activeTab.url == "about:blank" || activeTab.url == "netrunner://newtab" || activeTab.url == "about:home"
+  val isNewTab = activeTab.url.isBlank() || activeTab.url == "about:blank" || activeTab.url == "remmi://newtab" || activeTab.url == "about:home"
   val isFullBgActive = isNewTab && settings.fullscreenWallpaperEnabled && (settings.customWallpaperUri != null || settings.backgroundAnimation.isNotEmpty())
 
   Box(
@@ -687,7 +679,7 @@ fun BrowserScreen(
 
           }
         } else {
-          val isNewTab = activeTab.url.isBlank() || activeTab.url == "about:blank" || activeTab.url == "netrunner://newtab" || activeTab.url == "about:home"
+          val isNewTab = activeTab.url.isBlank() || activeTab.url == "about:blank" || activeTab.url == "remmi://newtab" || activeTab.url == "about:home"
 
           if (isNewTab) {
           NewTabPage(
@@ -1065,7 +1057,7 @@ fun BrowserScreen(
           }
 
           // Home Button (Styled Central Navigation Action)
-          val isHomeScreen = activeTab.url.isBlank() || activeTab.url == "about:blank" || activeTab.url == "netrunner://newtab" || activeTab.url == "about:home"
+          val isHomeScreen = activeTab.url.isBlank() || activeTab.url == "about:blank" || activeTab.url == "remmi://newtab" || activeTab.url == "about:home"
           IconButton(
             onClick = {
               tabManager.updateTab(activeTab.id) {

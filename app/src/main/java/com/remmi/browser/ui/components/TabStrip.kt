@@ -57,7 +57,7 @@ import com.remmi.browser.engine.TabGroup
 import com.remmi.browser.engine.TabThumbnailManager
 import com.remmi.browser.security.PrivacyProfile
 import com.remmi.browser.storage.BookmarkItem
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.ui.theme.CyberMonoFamily
 import com.remmi.browser.ui.theme.ThemeCyber
 import kotlinx.coroutines.Dispatchers
@@ -252,7 +252,7 @@ fun TabGridSheet(
   val isLight = cyberColors.isLight
   val isDark = !isLight
   val scope = rememberCoroutineScope()
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val thumbnailManager = remember { TabThumbnailManager.getInstance(context) }
   val thumbnailVersions by thumbnailManager.thumbnailVersions.collectAsState()
 
@@ -1496,7 +1496,7 @@ private fun ModernTabCard(
     else -> groupColor ?: activeAccentColor
   }
 
-  val isBlankOrNewTab = tab.url.isEmpty() || tab.url == "about:blank" || tab.url == "netrunner://newtab" || tab.title.equals("Remmi Home", ignoreCase = true)
+  val isBlankOrNewTab = tab.url.isEmpty() || tab.url == "about:blank" || tab.url == "remmi://newtab" || tab.title.equals("Remmi Home", ignoreCase = true)
   val cleanDomain = remember(tab.url) {
     try {
       val uri = android.net.Uri.parse(tab.url)

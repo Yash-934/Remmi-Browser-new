@@ -2,7 +2,7 @@ package com.remmi.browser.security
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import org.junit.After
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -21,32 +21,32 @@ class DatabaseHardeningTest {
   @Before
   fun setUp() {
     context = ApplicationProvider.getApplicationContext()
-    NetRunnerDatabase.closeDatabase()
+    RemmiDatabase.closeDatabase()
   }
 
   @After
   fun tearDown() {
-    NetRunnerDatabase.testPassphraseProvider = null
-    NetRunnerDatabase.closeDatabase()
+    RemmiDatabase.testPassphraseProvider = null
+    RemmiDatabase.closeDatabase()
   }
 
   @Test
   fun testFailsClosedWhenKeyDerivationFails() {
-    NetRunnerDatabase.testPassphraseProvider = {
+    RemmiDatabase.testPassphraseProvider = {
       throw SecurityException("Hardware Keystore failure simulation")
     }
 
     assertThrows(SecurityException::class.java) {
-      NetRunnerDatabase.getDatabase(context)
+      RemmiDatabase.getDatabase(context)
     }
   }
 
   @Test
   fun testFailsClosedWhenKeystoreUnavailableWithoutTestProvider() {
     // When no test provider is set and running in non-hardware Keystore env, must throw SecurityException
-    NetRunnerDatabase.testPassphraseProvider = null
+    RemmiDatabase.testPassphraseProvider = null
     assertThrows(SecurityException::class.java) {
-      NetRunnerDatabase.getDatabase(context)
+      RemmiDatabase.getDatabase(context)
     }
   }
 }

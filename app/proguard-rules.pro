@@ -10,9 +10,9 @@
     native <methods>;
 }
 
-# NetRunner Adblock Rust JNI Bridge
--keep class com.netrunner.adblock.** { *; }
--dontwarn com.netrunner.adblock.**
+# Remmi Adblock Rust JNI Bridge
+-keep class com.remmi.adblock.** { *; }
+-dontwarn com.remmi.adblock.**
 
 # Remmi Browser Classes
 -keep class com.remmi.browser.** { *; }

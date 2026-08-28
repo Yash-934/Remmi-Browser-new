@@ -66,7 +66,7 @@ import com.remmi.browser.security.ClipboardManager
 import com.remmi.browser.security.PrivacyProfile
 import com.remmi.browser.storage.BookmarkItem
 import com.remmi.browser.storage.HistoryItem
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.SearchEngine
 import com.remmi.browser.storage.SettingsRepository
 import com.remmi.browser.ui.theme.CyberMonoFamily
@@ -76,7 +76,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
- * Modern, ultra-sleek, beautiful Address Bar for NetRunner Browser.
+ * Modern, ultra-sleek, beautiful Address Bar for Remmi Browser.
  * Features:
  * - Floating Stadium/Pill capsule styling with glassmorphism surface gradient
  * - Security & Protocol badge with status dot (TLS, ONION, SANDBOX, HTTP)
@@ -106,7 +106,7 @@ fun TerminalUrlBar(
 ) {
   val context = LocalContext.current
   val clipboard = remember { ClipboardManager(context) }
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val settingsRepo = remember { SettingsRepository.getInstance(context) }
   val settings by settingsRepo.settings.collectAsState()
   val searchEngine = remember(settings.searchEngineName) { SearchEngine.fromId(settings.searchEngineName) }
@@ -123,7 +123,7 @@ fun TerminalUrlBar(
   var bookmarkSuggestions by remember { mutableStateOf<List<BookmarkItem>>(emptyList()) }
 
   var showQuickActions by remember(url) {
-    mutableStateOf(url.isNotBlank() && url != "about:blank" && url != "netrunner://newtab")
+    mutableStateOf(url.isNotBlank() && url != "about:blank" && url != "remmi://newtab")
   }
 
   // Auto-hide the Quick Actions menu after 3.5 seconds
@@ -133,13 +133,13 @@ fun TerminalUrlBar(
     editText = url
   }
 LaunchedEffect(url, showQuickActions) {
-    if (showQuickActions && !isEditing && url.isNotBlank() && url != "about:blank" && url != "netrunner://newtab") {
+    if (showQuickActions && !isEditing && url.isNotBlank() && url != "about:blank" && url != "remmi://newtab") {
       delay(3500)
       showQuickActions = false
     }
   }
 
-  val isInternalPage = url.isEmpty() || url == "about:blank" || url == "netrunner://newtab" || url == "about:home"
+  val isInternalPage = url.isEmpty() || url == "about:blank" || url == "remmi://newtab" || url == "about:home"
   val isEffectiveSecure = isSecure || isInternalPage
   val accentColor = if (profile == PrivacyProfile.GHOST) ThemeCyber.colors.torPurple else ThemeCyber.colors.primary
   val borderColor = if (isEditing) {
@@ -764,13 +764,13 @@ LaunchedEffect(url, showQuickActions) {
 
     // 4. Quick Actions Bar when viewing an active page
     val extractedOriginal = remember(url) {
-      if (url.isNotBlank() && url != "about:blank" && url != "netrunner://newtab") {
+      if (url.isNotBlank() && url != "about:blank" && url != "remmi://newtab") {
         com.remmi.browser.security.RedirectInspector.extractNestedTargetUrl(url)
       } else null
     }
 
     AnimatedVisibility(
-      visible = showQuickActions && !isEditing && url.isNotBlank() && url != "about:blank" && url != "netrunner://newtab",
+      visible = showQuickActions && !isEditing && url.isNotBlank() && url != "about:blank" && url != "remmi://newtab",
       enter = fadeIn() + expandVertically(),
       exit = fadeOut() + shrinkVertically(),
     ) {

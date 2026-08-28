@@ -2,7 +2,7 @@ package com.remmi.browser.security
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.netrunner.adblock.BlockExtension
+import com.remmi.adblock.BlockExtension
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals

@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Environment
 import android.util.Log
 import com.remmi.browser.engine.GeckoEngineManager
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,7 +84,7 @@ object PanicWipeManager {
    * Checks if an emergency panic wipe was interrupted by app termination or process death.
    * If detected on app launch, immediately executes and completes the remaining sanitization.
    */
-  suspend fun checkAndResumePendingWipe(context: Context, database: NetRunnerDatabase): Boolean = withContext(Dispatchers.IO) {
+  suspend fun checkAndResumePendingWipe(context: Context, database: RemmiDatabase): Boolean = withContext(Dispatchers.IO) {
     val prefs = context.getSharedPreferences(PREFS_RECOVERY, Context.MODE_PRIVATE)
     if (!prefs.getBoolean(KEY_PENDING_WIPE, false)) {
       return@withContext false
@@ -119,7 +119,7 @@ object PanicWipeManager {
 
   suspend fun executeWipe(
     context: Context,
-    database: NetRunnerDatabase,
+    database: RemmiDatabase,
     wipeVault: Boolean = false,
     onTabsClosed: () -> Unit = {}
   ): Boolean = withContext(Dispatchers.IO) {
@@ -184,7 +184,7 @@ object PanicWipeManager {
       )
 
       try {
-        val purgeResult = NetRunnerDatabase.secureWipe(context, wipeVault) {
+        val purgeResult = RemmiDatabase.secureWipe(context, wipeVault) {
           _state.value = PanicWipeState.InProgress(
             phaseDescription = "${WipePhase.WIPE_PASSWORD_VAULT.title}...",
             progress = 3f / totalSteps,

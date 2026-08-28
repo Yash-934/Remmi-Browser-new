@@ -3,6 +3,7 @@ package com.remmi.browser.security
 import android.content.Context
 import android.util.Log
 import com.remmi.browser.engine.GeckoEngineManager
+import com.remmi.browser.engine.TabManager
 import com.remmi.browser.util.DebugLogManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
     if (torResult.isFailure) {
       val error = torResult.exceptionOrNull() ?: Exception("Tor failed to initialize")
       Log.e(TAG, "Ghost Mode transition aborted: ${error.message}")
+      CurrentTorRoute.clearRoute()
       DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=${error.message}")
       return@withContext Result.failure(error)
     }
@@ -50,13 +52,33 @@ class PrivacyNetworkController private constructor(private val context: Context)
       val discovered = torManager.discoverRuntimeSocksPort()
       if (discovered <= 0) {
         val err = IllegalStateException("SOCKS port discovery returned invalid port: $discovered")
+        CurrentTorRoute.clearRoute()
         DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=port_unavailable")
         return@withContext Result.failure(err)
       }
       discovered
     }
 
-    // Step 3: Advance route generation and update Single Source of Truth
+    // Step 3: Verify SOCKS port handshake
+    val handshakeOk = TorStatusChecker.isPortListening("127.0.0.1", socksPort, 1500) &&
+      TorStatusChecker.verifySocks5Handshake("127.0.0.1", socksPort, 1500)
+    if (!handshakeOk) {
+      val err = IllegalStateException("Tor SOCKS5 handshake verification failed on port $socksPort")
+      CurrentTorRoute.clearRoute()
+      DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=socks_handshake_failed")
+      return@withContext Result.failure(err)
+    }
+
+    // Step 4: Apply hardened Tor preferences directly to native GeckoView engine
+    val proxyApplied = NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, socksPort, generation)
+    if (!proxyApplied) {
+      val err = IllegalStateException("Failed to apply Gecko native Tor proxy preferences")
+      CurrentTorRoute.clearRoute()
+      DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=gecko_proxy_failed")
+      return@withContext Result.failure(err)
+    }
+
+    // Step 5: Advance route generation and update Single Source of Truth
     CurrentTorRoute.updateRoute(
       socksPort = socksPort,
       isGhostActive = true,
@@ -65,8 +87,6 @@ class PrivacyNetworkController private constructor(private val context: Context)
       generation = generation
     )
 
-    // Step 4: Apply hardened Tor preferences directly to native GeckoView engine
-    NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, socksPort, generation)
     geckoEngine.applyPrivacyProfile(PrivacyProfile.GHOST, socksPort, generation)
     geckoEngine.setTabGhostMode(tabId, true)
 
@@ -77,25 +97,29 @@ class PrivacyNetworkController private constructor(private val context: Context)
   /**
    * Enters Shield Mode (Direct Clearnet with Fingerprinting Protection & Adblock):
    * 1. Closes existing Ghost session.
-   * 2. Clears SOCKS proxy from WebExtension & native Gecko engine.
+   * 2. Clears SOCKS proxy from WebExtension & native Gecko engine ONLY IF no other ghost tabs exist.
    * 3. Stops Tor if no other ghost tab is active.
    */
-  suspend fun enterShieldMode(tabId: String, otherGhostTabsExist: Boolean = false) = withContext(Dispatchers.IO) {
+  suspend fun enterShieldMode(tabId: String) = withContext(Dispatchers.IO) {
     Log.i(TAG, "Entering Shield Mode for tab $tabId (restoring direct clearnet)...")
-    val generation = CurrentTorRoute.clearRoute()
-    DebugLogManager.log("[ROUTE] REQUESTED profile=SHIELD tabId=$tabId generation=$generation")
 
     geckoEngine.closeSessionSafely(tabId)
     geckoEngine.setTabGhostMode(tabId, false)
 
-    if (!otherGhostTabsExist) {
-      DebugLogManager.log("[TOR] No other Ghost tabs active; stopping Tor daemon...")
-      torManager.stopTor()
+    val anyOtherGhostTabs = TabManager.getInstance().tabs.value.any {
+      it.id != tabId && it.profile == PrivacyProfile.GHOST
     }
 
-    NetworkHardening.applyShieldNetworkSettings(geckoEngine.runtime, generation)
-    geckoEngine.applyPrivacyProfile(PrivacyProfile.SHIELD, null, generation)
-    DebugLogManager.log("[ROUTE] ACTIVE profile=SHIELD")
+    if (!anyOtherGhostTabs) {
+      val generation = CurrentTorRoute.clearRoute()
+      DebugLogManager.log("[ROUTE] REQUESTED profile=SHIELD tabId=$tabId generation=$generation")
+      torManager.stopTor()
+      NetworkHardening.applyShieldNetworkSettings(geckoEngine.runtime, generation)
+      geckoEngine.applyPrivacyProfile(PrivacyProfile.SHIELD, null, generation)
+      DebugLogManager.log("[ROUTE] ACTIVE profile=SHIELD")
+    } else {
+      DebugLogManager.log("[ROUTE] Shield tab active but other Ghost tabs exist; maintaining Tor route invariant")
+    }
   }
 
   /**

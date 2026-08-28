@@ -53,7 +53,7 @@ data class DecryptedPasswordEntry(
 )
 
 /**
- * Bank-Grade, Maximum-Security Password Crypto Engine for NetRunner.
+ * Bank-Grade, Maximum-Security Password Crypto Engine for Remmi.
  * Implements Argon2id KDF (64 MiB, 3 iter, 1 parallelism), AES-256-GCM, HMAC-SHA256 verifier,
  * Android Keystore Biometric wrapping, and zero-knowledge memory wiping.
  */

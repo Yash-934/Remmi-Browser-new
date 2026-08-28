@@ -2,7 +2,7 @@ package com.remmi.browser.security
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -23,15 +23,15 @@ class PanicWipeManagerTest {
   @Before
   fun setUp() {
     context = ApplicationProvider.getApplicationContext()
-    NetRunnerDatabase.testPassphraseProvider = { ByteArray(32) { 0x42.toByte() } }
+    RemmiDatabase.testPassphraseProvider = { ByteArray(32) { 0x42.toByte() } }
     PanicWipeManager.resetState()
     PanicWipeManager.clearWipeMarker(context)
   }
 
   @org.junit.After
   fun tearDown() {
-    NetRunnerDatabase.testPassphraseProvider = null
-    NetRunnerDatabase.closeDatabase()
+    RemmiDatabase.testPassphraseProvider = null
+    RemmiDatabase.closeDatabase()
   }
 
   @Test
@@ -81,7 +81,7 @@ class PanicWipeManagerTest {
 
   @Test
   fun testPurgeResultDataModel() {
-    val successResult = com.remmi.browser.storage.NetRunnerDatabase.Companion.PurgeResult(
+    val successResult = com.remmi.browser.storage.RemmiDatabase.Companion.PurgeResult(
       filesDeleted = 3,
       filesFailed = 0,
       keyRevoked = true,
@@ -92,11 +92,11 @@ class PanicWipeManagerTest {
     assertTrue(successResult.keyRevoked)
     assertTrue(successResult.errors.isEmpty())
 
-    val errorResult = com.remmi.browser.storage.NetRunnerDatabase.Companion.PurgeResult(
+    val errorResult = com.remmi.browser.storage.RemmiDatabase.Companion.PurgeResult(
       filesDeleted = 1,
       filesFailed = 2,
       keyRevoked = false,
-      errors = listOf("Failed to delete database file: netrunner_vault.db")
+      errors = listOf("Failed to delete database file: remmi_vault.db")
     )
     assertEquals(1, errorResult.filesDeleted)
     assertEquals(2, errorResult.filesFailed)
@@ -303,7 +303,7 @@ class PanicWipeManagerTest {
 
   @Test
   fun test10_IntentionallyDeletedDB_VerificationPass() {
-    val dbFile = this@PanicWipeManagerTest.context.getDatabasePath("netrunner_vault.db")
+    val dbFile = this@PanicWipeManagerTest.context.getDatabasePath("remmi_vault.db")
     if (dbFile.exists()) dbFile.delete()
     val walFile = File(dbFile.path + "-wal")
     if (walFile.exists()) walFile.delete()
@@ -333,7 +333,7 @@ class PanicWipeManagerTest {
 
   @Test
   fun test11_VaultDbAbsent_VaultKeyRevoked_Pass() {
-    val dbFile = this@PanicWipeManagerTest.context.getDatabasePath("netrunner_vault.db")
+    val dbFile = this@PanicWipeManagerTest.context.getDatabasePath("remmi_vault.db")
     if (dbFile.exists()) dbFile.delete()
 
     val report = LogicalVerificationReport(
@@ -360,7 +360,7 @@ class PanicWipeManagerTest {
       vaultSecretsVerified = false,
       remainingFilesFound = 0,
       remainingDbRowsFound = 0,
-      details = listOf("Cryptographic Audit FAILED: netrunner_db_master_key still present in AndroidKeyStore.")
+      details = listOf("Cryptographic Audit FAILED: remmi_db_master_key still present in AndroidKeyStore.")
     )
     assertFalse("When vault key remains in Keystore, verification must FAIL", failingReport.isCompleteSuccess)
     assertFalse(failingReport.vaultSecretsVerified)
@@ -800,16 +800,16 @@ class PanicWipeManagerTest {
     @Test
   fun test34_DbIsNeverReopenedDuringWipe() {
     val ctx = context
-    NetRunnerDatabase.endWipeAfterSuccess()
+    RemmiDatabase.endWipeAfterSuccess()
     kotlinx.coroutines.runBlocking {
-      NetRunnerDatabase.beginWipe()
+      RemmiDatabase.beginWipe()
       try {
-          NetRunnerDatabase.getDatabase(ctx)
+          RemmiDatabase.getDatabase(ctx)
           org.junit.Assert.fail("Database should not reopen during wipe")
       } catch (e: IllegalStateException) {
           assertTrue(e.message!!.contains("Cannot open database during an active Panic Wipe"))
       } finally {
-          NetRunnerDatabase.endWipeAfterSuccess()
+          RemmiDatabase.endWipeAfterSuccess()
       }
     }
   }
@@ -817,9 +817,9 @@ class PanicWipeManagerTest {
     @Test
   fun test36_VaultScrubBeforeDbClose() {
      val ctx = context
-    NetRunnerDatabase.endWipeAfterSuccess()
+    RemmiDatabase.endWipeAfterSuccess()
      kotlinx.coroutines.runBlocking {
-       val result = NetRunnerDatabase.secureWipe(ctx, true) {
+       val result = RemmiDatabase.secureWipe(ctx, true) {
            true
        }
        assertTrue(result.vaultScrubSucceeded)
@@ -829,16 +829,16 @@ class PanicWipeManagerTest {
   @Test
   fun test37_DbAndWalAndShmAbsentAfterFullWipe() {
      val ctx = context
-    NetRunnerDatabase.endWipeAfterSuccess()
+    RemmiDatabase.endWipeAfterSuccess()
      kotlinx.coroutines.runBlocking {
-       val dbFile = ctx.getDatabasePath("netrunner_vault.db")
+       val dbFile = ctx.getDatabasePath("remmi_vault.db")
        dbFile.parentFile?.mkdirs()
        dbFile.writeText("fake db")
        java.io.File(dbFile.path + "-wal").writeText("wal")
        java.io.File(dbFile.path + "-shm").writeText("shm")
        java.io.File(dbFile.path + "-journal").writeText("journal")
        
-       NetRunnerDatabase.secureWipe(ctx, true) { true }
+       RemmiDatabase.secureWipe(ctx, true) { true }
        
        assertFalse(dbFile.exists())
        assertFalse(java.io.File(dbFile.path + "-wal").exists())
@@ -850,7 +850,7 @@ class PanicWipeManagerTest {
   @Test
   fun test38_DeeplyNestedGeckoUserData() {
      val ctx = context
-    NetRunnerDatabase.endWipeAfterSuccess()
+    RemmiDatabase.endWipeAfterSuccess()
      kotlinx.coroutines.runBlocking {
        val cacheDir = java.io.File(ctx.cacheDir, "gecko/deeply/nested/dir/1/2/3/4/5/6/7/8/9/10/cookies.sqlite")
        cacheDir.parentFile?.mkdirs()
@@ -878,28 +878,28 @@ class PanicWipeManagerTest {
   @Test
   fun test40_FreshVaultAfterWipe() = kotlinx.coroutines.runBlocking {
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       // 1. Create DB and vault
       try {
-          val db1 = NetRunnerDatabase.getDatabase(ctx)
+          val db1 = RemmiDatabase.getDatabase(ctx)
       } catch (e: Throwable) {
           // Ignore if previous test wiped it or native libs not loaded on JVM
       }
       
       // 2. Panic wipe with wipeVault=true
-      val result = NetRunnerDatabase.secureWipe(ctx, true) { true }
+      val result = RemmiDatabase.secureWipe(ctx, true) { true }
       println(result.errors)
       
       // 3. Verification
       if (result.errors.isNotEmpty()) {
-          NetRunnerDatabase.endWipeAfterSuccess()
+          RemmiDatabase.endWipeAfterSuccess()
       }
-      assertFalse("isWipeActive should be false after successful wipe", NetRunnerDatabase.isWipeActive)
+      assertFalse("isWipeActive should be false after successful wipe", RemmiDatabase.isWipeActive)
       
       // 4. Initialize fresh DB
       try {
-          val db2 = NetRunnerDatabase.getDatabase(ctx)
+          val db2 = RemmiDatabase.getDatabase(ctx)
           val tabs = db2.sessionTabDao().getAllTabs()
           assertTrue("Old vault data should not return", tabs.isEmpty())
       } catch (e: Throwable) {
@@ -911,16 +911,16 @@ class PanicWipeManagerTest {
   @Test
   fun test41_ConcurrentGetDatabaseVsSecureWipeRace() {
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       var errors = 0
       
       for (i in 0..100) {
-          NetRunnerDatabase.endWipeAfterSuccess()
+          RemmiDatabase.endWipeAfterSuccess()
           
           val threadA = Thread {
               try {
-                  NetRunnerDatabase.getDatabase(ctx)
+                  RemmiDatabase.getDatabase(ctx)
               } catch (e: IllegalStateException) {
                   // Expected if wipe is active
               }
@@ -928,7 +928,7 @@ class PanicWipeManagerTest {
           
           val threadB = Thread {
               kotlinx.coroutines.runBlocking {
-                  NetRunnerDatabase.secureWipe(ctx, true) { true }
+                  RemmiDatabase.secureWipe(ctx, true) { true }
               }
           }
           
@@ -939,7 +939,7 @@ class PanicWipeManagerTest {
           threadB.join()
       }
       
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
   }
 
 
@@ -949,15 +949,15 @@ class PanicWipeManagerTest {
       // Start secureWipe. Verify wipe cannot begin concurrently in a way that permits a new DB handle to escape.
       // Since getDatabase uses synchronized(this), if a thread is inside getDatabase, secureWipe's beginWipe (which also uses synchronized(this)) will block.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
-      var dbHandle: NetRunnerDatabase? = null
+      var dbHandle: RemmiDatabase? = null
       val threadA = Thread {
           // We can simulate this by taking the lock that getDatabase uses.
-          synchronized(NetRunnerDatabase.Companion) {
+          synchronized(RemmiDatabase.Companion) {
               Thread.sleep(500)
               try {
-                  dbHandle = NetRunnerDatabase.getDatabase(ctx)
+                  dbHandle = RemmiDatabase.getDatabase(ctx)
               } catch (_: Throwable) {}
           }
       }
@@ -968,7 +968,7 @@ class PanicWipeManagerTest {
           // This will block until A finishes its synchronized block.
           kotlinx.coroutines.runBlocking {
               wipeStarted = true
-              NetRunnerDatabase.secureWipe(ctx, true) { true }
+              RemmiDatabase.secureWipe(ctx, true) { true }
           }
       }
       
@@ -985,24 +985,24 @@ class PanicWipeManagerTest {
       // TEST B: Pause a normal DB operation. Start secureWipe.
       // Verify wipe waits until the operation releases its read lock.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       var wipeFinished = false
       val lockAcquired = java.util.concurrent.CountDownLatch(1)
       val threadA = Thread {
-          NetRunnerDatabase.dbLock.readLock().lock()
+          RemmiDatabase.dbLock.readLock().lock()
           try {
               lockAcquired.countDown()
               Thread.sleep(500) // Simulate long operation holding read lock
           } finally {
-              NetRunnerDatabase.dbLock.readLock().unlock()
+              RemmiDatabase.dbLock.readLock().unlock()
           }
       }
       
       val threadB = Thread {
           lockAcquired.await(2, java.util.concurrent.TimeUnit.SECONDS)
           kotlinx.coroutines.runBlocking {
-              NetRunnerDatabase.secureWipe(ctx, true) { true }
+              RemmiDatabase.secureWipe(ctx, true) { true }
           }
           wipeFinished = true
       }
@@ -1023,13 +1023,13 @@ class PanicWipeManagerTest {
       // TEST C: Start secureWipe. Attempt getDatabase repeatedly.
       // Every attempt must fail while wipe is ACTIVE/RECOVERY_REQUIRED.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       var wipeInProgress = true
       val threadA = Thread {
           kotlinx.coroutines.runBlocking {
               // Simulate a slow scrub to keep it in ACTIVE state
-              NetRunnerDatabase.secureWipe(ctx, true) {
+              RemmiDatabase.secureWipe(ctx, true) {
                   Thread.sleep(500)
                   true
               }
@@ -1043,7 +1043,7 @@ class PanicWipeManagerTest {
       var failures = 0
       while (wipeInProgress) {
           try {
-              NetRunnerDatabase.getDatabase(ctx)
+              RemmiDatabase.getDatabase(ctx)
           } catch (e: IllegalStateException) {
               failures++
           }
@@ -1057,27 +1057,27 @@ class PanicWipeManagerTest {
   fun test45_TestD_InjectException() {
       // TEST D: Inject exception during secureWipe. Verify wipeState != ACTIVE afterward.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       kotlinx.coroutines.runBlocking {
-          NetRunnerDatabase.secureWipe(ctx, true) {
+          RemmiDatabase.secureWipe(ctx, true) {
               throw RuntimeException("Injected vault scrub failure")
           }
       }
       // Depending on implementation, it should transition to RECOVERY_REQUIRED
-      assertTrue("Wipe active should be true (RECOVERY_REQUIRED)", NetRunnerDatabase.isWipeActive)
+      assertTrue("Wipe active should be true (RECOVERY_REQUIRED)", RemmiDatabase.isWipeActive)
   }
 
   @Test
   fun test46_TestE_SuccessfulSecureWipe() {
       // TEST E: Successful secureWipe. Verify wipeState == IDLE.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       kotlinx.coroutines.runBlocking {
-          NetRunnerDatabase.secureWipe(ctx, true) { true }
+          RemmiDatabase.secureWipe(ctx, true) { true }
       }
-      assertFalse("Wipe active should be false (IDLE)", NetRunnerDatabase.isWipeActive)
+      assertFalse("Wipe active should be false (IDLE)", RemmiDatabase.isWipeActive)
   }
 
   @Test
@@ -1085,13 +1085,13 @@ class PanicWipeManagerTest {
       // TEST F: Existing DB reference during wipe.
       // Verify it cannot perform protected DB operations once exclusive wipe phase starts.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
-      val db = try { NetRunnerDatabase.getDatabase(ctx) } catch (_: Throwable) { null }
+      val db = try { RemmiDatabase.getDatabase(ctx) } catch (_: Throwable) { null }
       
       val threadB = Thread {
           kotlinx.coroutines.runBlocking {
-              NetRunnerDatabase.secureWipe(ctx, true) { true }
+              RemmiDatabase.secureWipe(ctx, true) { true }
           }
       }
       threadB.start()
@@ -1106,14 +1106,14 @@ class PanicWipeManagerTest {
   fun test48_TestG_StressTest() {
       // TEST G: 100+ concurrent readers/writers + one wipe.
       val ctx = context
-      NetRunnerDatabase.endWipeAfterSuccess()
+      RemmiDatabase.endWipeAfterSuccess()
       
       val threads = mutableListOf<Thread>()
       var wipeFinished = false
       for (i in 0..100) {
           threads.add(Thread {
               try {
-                  NetRunnerDatabase.withDatabase(ctx) { db ->
+                  RemmiDatabase.withDatabase(ctx) { db ->
                       // dummy operation
                       Thread.sleep(5)
                   }
@@ -1126,7 +1126,7 @@ class PanicWipeManagerTest {
       val wipeThread = Thread {
           Thread.sleep(50)
           kotlinx.coroutines.runBlocking {
-              NetRunnerDatabase.secureWipe(ctx, true) { true }
+              RemmiDatabase.secureWipe(ctx, true) { true }
           }
           wipeFinished = true
       }
@@ -1138,7 +1138,7 @@ class PanicWipeManagerTest {
       wipeThread.join()
       
       assertTrue(wipeFinished)
-      assertFalse(NetRunnerDatabase.isWipeActive)
+      assertFalse(RemmiDatabase.isWipeActive)
   }
 
 

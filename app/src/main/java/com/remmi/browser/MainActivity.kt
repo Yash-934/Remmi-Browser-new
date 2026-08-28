@@ -21,7 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.remmi.browser.engine.TabManager
 import com.remmi.browser.security.PanicWipeManager
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.SettingsRepository
 import com.remmi.browser.ui.passwords.PasswordManagerScreen
 import com.remmi.browser.ui.screens.BrowserScreen
@@ -48,12 +48,12 @@ class MainActivity : FragmentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     
-    // Check and export any previous crash report to Downloads/Remmi Browser/ and clipboard
+    // Check and export any previous crash report to Downloads/Remmi Browser/
     val pendingCrash = CrashHandlerHelper.checkAndExportPendingCrash(this)
     if (pendingCrash != null) {
       android.widget.Toast.makeText(
         this,
-        "Crash log saved to Downloads/Remmi Browser/ & copied to clipboard",
+        "Crash log saved to Downloads/Remmi Browser/",
         android.widget.Toast.LENGTH_LONG
       ).show()
     }
@@ -67,7 +67,7 @@ class MainActivity : FragmentActivity() {
       com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
     }
 
-    val prefs = getSharedPreferences("netrunner_app_state", Context.MODE_PRIVATE)
+    val prefs = getSharedPreferences("remmi_app_state", Context.MODE_PRIVATE)
     val hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false)
     val settingsRepo = SettingsRepository.getInstance(applicationContext)
 

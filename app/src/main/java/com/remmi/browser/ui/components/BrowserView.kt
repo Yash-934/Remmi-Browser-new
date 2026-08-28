@@ -179,27 +179,15 @@ fun BrowserView(
     }
   }
 
-  // Synchronize network hardening and privacy profile settings
+  // Synchronize tab settings with the underlying GeckoSession
   LaunchedEffect(tab.id, tab.profile, tab.isDesktopMode, tab.securityLevel, tab.containerType) {
-    if (tab.profile == PrivacyProfile.GHOST) {
-      val port = CurrentTorRoute.currentSocksPort
-      NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, port)
-      geckoEngine.applyPrivacyProfile(PrivacyProfile.GHOST, tab.securityLevel, port)
-    } else {
-      NetworkHardening.applyShieldNetworkSettings(geckoEngine.runtime)
-      geckoEngine.applyPrivacyProfile(PrivacyProfile.SHIELD, tab.securityLevel)
-    }
     geckoEngine.updateTabSettings(tab.id, tab.isDesktopMode, tab.profile, tab.securityLevel)
   }
 
   // Handle URL navigation safely through GeckoEngineManager without feedback loops
   LaunchedEffect(tab.url) {
-    if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "netrunner://newtab" && tab.url != lastNavigatedUrl) {
+    if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "remmi://newtab" && tab.url != lastNavigatedUrl) {
       lastNavigatedUrl = tab.url
-      if (tab.profile == PrivacyProfile.GHOST) {
-        val port = CurrentTorRoute.currentSocksPort
-        NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, port)
-      }
       geckoEngine.loadUrl(tab.id, tab.url)
     }
   }
@@ -255,7 +243,7 @@ fun BrowserView(
       .fillMaxSize()
       .background(ThemeCyber.colors.background)
   ) {
-    val isNewTab = tab.url.isBlank() || tab.url == "about:blank" || tab.url == "netrunner://newtab"
+    val isNewTab = tab.url.isBlank() || tab.url == "about:blank" || tab.url == "remmi://newtab"
 
     if (isNewTab) {
       NewTabPage(
@@ -291,7 +279,7 @@ fun BrowserView(
                 containerType = tab.containerType,
                 callbacks = tabCallbacks,
               )
-              if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "netrunner://newtab") {
+              if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "remmi://newtab") {
                 lastNavigatedUrl = tab.url
                 geckoEngine.loadUrl(tab.id, tab.url)
               }

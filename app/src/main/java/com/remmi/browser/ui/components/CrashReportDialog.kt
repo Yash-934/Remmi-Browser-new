@@ -57,7 +57,7 @@ fun CrashReportDialog(
   onDismiss: () -> Unit
 ) {
   val context = LocalContext.current
-  var copied by remember { mutableStateOf(true) } // Already copied by helper automatically
+  var copied by remember { mutableStateOf(false) }
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -117,7 +117,7 @@ fun CrashReportDialog(
         }
 
         Text(
-          text = "The log has also been automatically copied to your clipboard.",
+          text = "You can view, share, or copy the crash log below.",
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -5,8 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import com.netrunner.adblock.AdblockBridge
-import com.netrunner.adblock.BlockExtension
+import com.remmi.adblock.AdblockBridge
+import com.remmi.adblock.BlockExtension
 import com.remmi.browser.model.WebContextMenuData
 import com.remmi.browser.security.AntiFingerprint
 import com.remmi.browser.security.ContainerType
@@ -95,8 +95,8 @@ class GeckoEngineManager private constructor(private val context: Context) {
     } catch (_: Exception) {}
 
     val settings = GeckoRuntimeSettings.Builder()
-      .aboutConfigEnabled(true)
-      .consoleOutput(true)
+      .aboutConfigEnabled(com.remmi.browser.BuildConfig.DEBUG)
+      .consoleOutput(com.remmi.browser.BuildConfig.DEBUG)
       .build()
 
     val rt = GeckoRuntime.create(context, settings)
@@ -174,8 +174,53 @@ class GeckoEngineManager private constructor(private val context: Context) {
         Log.w(TAG, "Cannot apply Ghost profile: SOCKS port is not ready ($socksPort)")
       }
     } else {
-      // SHIELD / INCOGNITO MODE (Clearnet + FPP)
-      NetworkHardening.applyShieldNetworkSettings(rt, generation, browserSettings)
+      if (CurrentTorRoute.isGhostActive) {
+        Log.i(TAG, "Maintaining Tor routing invariant: Tor route active across system, skipping clearnet reset.")
+      } else {
+        // SHIELD / INCOGNITO MODE (Clearnet + FPP)
+        NetworkHardening.applyShieldNetworkSettings(rt, generation, browserSettings)
+      }
+    }
+  }
+
+  fun updateGlobalPreferences(settings: com.remmi.browser.storage.BrowserSettings) {
+    val rt = runtime ?: return
+    if (CurrentTorRoute.isGhostActive) {
+      val port = CurrentTorRoute.currentSocksPort ?: return
+      NetworkHardening.applyTorNetworkSettings(rt, port, CurrentTorRoute.currentGeneration, settings)
+    } else {
+      NetworkHardening.applyShieldNetworkSettings(rt, CurrentTorRoute.currentGeneration, settings)
+    }
+  }
+
+  fun applySiteSecurityPolicy(tabId: String, host: String) {
+    if (host.isBlank()) return
+    val policy = com.remmi.browser.security.SiteSecurityPolicyManager.getInstance(context).getPolicyForHost(host)
+    val tab = TabManager.getInstance().getTab(tabId)
+    val profile = tab?.profile ?: currentProfile
+    val securityLevel = policy.customSecurityLevel ?: tab?.securityLevel ?: SecurityLevel.STANDARD
+
+    onMainSession(tabId, "APPLY_SITE_SECURITY_POLICY") { session ->
+      session.settings.apply {
+        allowJavascript = policy.javascriptEnabled ?: securityLevel.javascriptEnabled
+        useTrackingProtection = (policy.cookiePolicy != "ALLOW")
+        suspendMediaWhenInactive = !policy.autoplayAllowed
+      }
+      AntiFingerprint.configureGeckoSession(session, profile, securityLevel)
+      Log.d(TAG, "Applied site security policy for host '$host' to tab $tabId (js=${session.settings.allowJavascript}, tp=${session.settings.useTrackingProtection}, autoplay=${policy.autoplayAllowed})")
+    }
+  }
+
+  fun applySiteSecurityPolicyToMatchingTabs(host: String) {
+    val cleanHost = host.lowercase().trim()
+    val currentTabs = TabManager.getInstance().tabs.value
+    for (tab in currentTabs) {
+      val tabHost = try {
+        java.net.URI(if (tab.url.contains("://")) tab.url else "https://${tab.url}").host?.lowercase()?.trim()
+      } catch (_: Exception) { null }
+      if (tabHost == cleanHost) {
+        applySiteSecurityPolicy(tab.id, cleanHost)
+      }
     }
   }
 
@@ -266,6 +311,12 @@ class GeckoEngineManager private constructor(private val context: Context) {
       ) {
         url?.let {
           if (it.isNotBlank() && it != "about:blank") {
+            try {
+              val host = java.net.URI(if (it.contains("://")) it else "https://$it").host
+              if (!host.isNullOrBlank()) {
+                applySiteSecurityPolicy(tabId, host)
+              }
+            } catch (_: Exception) {}
             sessionCallbacks[tabId]?.onUrlChange(it)
           }
         }
@@ -489,13 +540,18 @@ class GeckoEngineManager private constructor(private val context: Context) {
 
   fun loadUrl(tabId: String, url: String) {
     if (url.isBlank()) return
-    val isGhost = currentProfile == PrivacyProfile.GHOST
+    val tab = TabManager.getInstance().getTab(tabId)
+    val isGhost = (tab?.profile == PrivacyProfile.GHOST) || (currentProfile == PrivacyProfile.GHOST)
     val check = com.remmi.browser.security.NavigationSecurityAuthority.validateAndSanitizeNavigation(url, isGhost)
     if (check.decision == com.remmi.browser.security.NavigationDecision.BLOCK) {
       Log.w(TAG, "Blocked navigation to '$url' reason: ${check.reason}")
       return
     }
     val targetUrl = check.sanitizedUrl ?: url
+    val host = try { java.net.URI(if (targetUrl.contains("://")) targetUrl else "https://$targetUrl").host ?: "" } catch (_: Exception) { "" }
+    if (host.isNotBlank()) {
+      applySiteSecurityPolicy(tabId, host)
+    }
     onMainSession(tabId, "LOAD_URL") { session ->
       session.loadUri(targetUrl)
     }

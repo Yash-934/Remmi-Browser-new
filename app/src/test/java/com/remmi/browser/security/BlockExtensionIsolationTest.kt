@@ -1,7 +1,7 @@
 package com.remmi.browser.security
 
-import com.netrunner.adblock.AdblockBridge
-import com.netrunner.adblock.BlockExtension
+import com.remmi.adblock.AdblockBridge
+import com.remmi.adblock.BlockExtension
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

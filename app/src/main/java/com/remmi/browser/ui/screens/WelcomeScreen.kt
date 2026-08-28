@@ -214,7 +214,7 @@ fun WelcomeScreen(
             Icon(Icons.Default.Check, null, tint = ThemeCyber.colors.successGreen, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-              "NETRUNNER IS YOUR DEFAULT BROWSER",
+              "REMMI IS YOUR DEFAULT BROWSER",
               color = ThemeCyber.colors.successGreen,
               fontFamily = ThemeCyber.fontFamily,
               fontSize = 11.sp,

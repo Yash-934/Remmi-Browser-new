@@ -3,7 +3,7 @@ package com.remmi.browser.security
 import android.content.Context
 import android.os.Environment
 import android.util.Log
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -47,7 +47,7 @@ object WipeVerifier {
     var diskVerified = false
     var vaultVerified = !vaultWiped
 
-    val dbFile = context.getDatabasePath("netrunner_vault.db")
+    val dbFile = context.getDatabasePath("remmi_vault.db")
     val isDbFileAbsent = !dbFile.exists()
 
     // 1. Room Database Record Verification (READ-ONLY)
@@ -87,7 +87,7 @@ object WipeVerifier {
            details.add("Database Record Audit FAILED: Database file still exists after full wipe.")
         } else {
            // read row counts
-           val db = NetRunnerDatabase.getDatabase(context)
+           val db = RemmiDatabase.getDatabase(context)
            val historyCount = db.historyDao().getCount()
            val tabCount = db.sessionTabDao().getCount()
            val downloadCount = db.downloadDao().getCount()
@@ -172,11 +172,11 @@ object WipeVerifier {
           var keyRevoked = true
           try {
             val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            val masterAliasExists = ks.containsAlias("netrunner_db_master_key")
+            val masterAliasExists = ks.containsAlias("remmi_db_master_key")
             val bioAliasExists = ks.containsAlias("Remmi_PM_Biometric_DEK_Wrapper")
             if (masterAliasExists || bioAliasExists) {
               keyRevoked = false
-              if (masterAliasExists) details.add("Cryptographic Audit FAILED: netrunner_db_master_key still present in AndroidKeyStore.")
+              if (masterAliasExists) details.add("Cryptographic Audit FAILED: remmi_db_master_key still present in AndroidKeyStore.")
               if (bioAliasExists) details.add("Cryptographic Audit FAILED: Remmi_PM_Biometric_DEK_Wrapper still present in AndroidKeyStore.")
             }
           } catch (e: Exception) {

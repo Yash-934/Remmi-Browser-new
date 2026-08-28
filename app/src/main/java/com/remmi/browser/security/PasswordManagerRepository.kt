@@ -9,7 +9,7 @@ import com.remmi.browser.security.crypto.DecryptedPasswordEntry
 import com.remmi.browser.security.crypto.MasterPasswordStrength
 import com.remmi.browser.security.crypto.PasswordCryptoEngine
 import com.remmi.browser.storage.MasterKeyMetadataEntity
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.PasswordEntryEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,11 +51,11 @@ class PasswordManagerRepository private constructor(
   private val context: Context,
   
 ) {
-  private val db: NetRunnerDatabase
-    get() = NetRunnerDatabase.getDatabase(context)
+  private val db: RemmiDatabase
+    get() = RemmiDatabase.getDatabase(context)
 
   private val scope = CoroutineScope(Dispatchers.IO + Job())
-  private val prefs: SharedPreferences = context.getSharedPreferences("netrunner_pm_secure_state", Context.MODE_PRIVATE)
+  private val prefs: SharedPreferences = context.getSharedPreferences("remmi_pm_secure_state", Context.MODE_PRIVATE)
 
   private val _lockState = MutableStateFlow<VaultLockState>(VaultLockState.Locked)
   val lockState: StateFlow<VaultLockState> = _lockState.asStateFlow()
@@ -77,7 +77,7 @@ class PasswordManagerRepository private constructor(
 
     fun getInstance(context: Context): PasswordManagerRepository {
       return INSTANCE ?: synchronized(this) {
-        val db = NetRunnerDatabase.getDatabase(context)
+        val db = RemmiDatabase.getDatabase(context)
         INSTANCE ?: PasswordManagerRepository(context.applicationContext).also {
           INSTANCE = it
         }

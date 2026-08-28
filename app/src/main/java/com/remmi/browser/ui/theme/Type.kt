@@ -29,7 +29,7 @@ enum class BrowserFont(
     displayName = "Cyberpunk Matrix Terminal",
     subtitle = "Futuristic neon hacker console monospace",
     fontFamily = FontFamily.Monospace,
-    previewSample = "NETRUNNER_V4.2 // PROXY_NODE [ESTABLISHED]",
+    previewSample = "REMMI_V4.2 // PROXY_NODE [ESTABLISHED]",
     category = "CYBERPUNK & HACKER"
   ),
   HACKER_CODE(

@@ -112,15 +112,6 @@ fun RemmiTheme(
   }
 }
 
-@Composable
-fun NetRunnerTheme(
-  cyberTheme: CyberTheme = CyberTheme.NORMAL_DEFAULT,
-  pureBlackOled: Boolean = false,
-  browserFont: BrowserFont = BrowserFont.CHROME_SANS,
-  content: @Composable () -> Unit,
-) {
-  RemmiTheme(cyberTheme = cyberTheme, pureBlackOled = pureBlackOled, browserFont = browserFont, content = content)
-}
 
 @Composable
 fun MyApplicationTheme(

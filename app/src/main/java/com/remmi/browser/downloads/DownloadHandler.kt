@@ -17,7 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.remmi.browser.R
 import com.remmi.browser.storage.DownloadItem
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,7 +54,7 @@ class DownloadHandler(private val context: Context) {
 
   private val downloadManager =
     context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-  private val database get() = NetRunnerDatabase.getDatabase(context)
+  private val database get() = RemmiDatabase.getDatabase(context)
   private val scope = CoroutineScope(Dispatchers.IO)
 
   private val _activeDownloads = MutableStateFlow<Map<Long, DownloadProgressInfo>>(emptyMap())

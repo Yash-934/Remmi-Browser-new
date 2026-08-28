@@ -61,15 +61,6 @@ object CrashHandlerHelper {
     // 1. Save to Downloads / Remmi Browser folder
     val savedPath = saveToDownloads(context, report, timestamp)
 
-    // 2. Automatically copy full crash log to clipboard
-    try {
-      val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-      val clip = ClipData.newPlainText("Remmi Crash Log", report)
-      clipboard?.setPrimaryClip(clip)
-    } catch (e: Exception) {
-      Log.w(TAG, "Could not copy to clipboard: ${e.message}")
-    }
-
     return CrashExportResult(
       fullReport = report,
       savedPath = savedPath ?: "Downloads/Remmi Browser/",

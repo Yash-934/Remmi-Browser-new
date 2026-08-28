@@ -78,11 +78,11 @@ object NavigationSecurityAuthority {
 
     val isOnion = NetworkRouteAuthority.isOnionDestination(trimmed)
     if (isOnion) {
-      if (!isGhost && !CurrentTorRoute.isReady) {
-        Log.w(TAG, "Navigation BLOCKED: .onion requested but Ghost/Tor is not active/verified.")
+      if (!isGhost || !CurrentTorRoute.isReady) {
+        Log.w(TAG, "Navigation BLOCKED: .onion requested but Ghost/Tor is not active/verified for this tab (isGhost=$isGhost, torReady=${CurrentTorRoute.isReady}).")
         return NavigationCheckResult(
           NavigationDecision.BLOCK,
-          reason = ".onion hidden services require an active and verified Tor (Ghost) connection."
+          reason = ".onion hidden services require an active and verified Tor (Ghost) tab session."
         )
       }
     }
@@ -100,7 +100,7 @@ object NavigationSecurityAuthority {
       return true
     }
 
-    // Check numeric IPv4
+    // Check numeric IPv4 literals
     try {
       val parts = clean.split(".")
       if (parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 }) {
@@ -114,7 +114,7 @@ object NavigationSecurityAuthority {
       }
     } catch (_: Exception) {}
 
-    // Check raw InetAddress if IP literal
+    // Check IP literal directly
     try {
       if (clean.matches(Regex("^[0-9.]+$")) || clean.contains(':')) {
         val addr = InetAddress.getByName(clean)
@@ -122,6 +122,21 @@ object NavigationSecurityAuthority {
         if (!isSafe) return true
       }
     } catch (_: Exception) {}
+
+    // Check hostname address resolution for DNS rebinding protection (unless .onion)
+    if (!clean.endsWith(".onion") && clean != "onion") {
+      try {
+        val addresses = InetAddress.getAllByName(clean)
+        for (addr in addresses) {
+          val (isSafe, _) = RedirectInspector.isInetAddressSafe(addr)
+          if (!isSafe) {
+            return true
+          }
+        }
+      } catch (_: Exception) {
+        // Offline or unresolvable; let engine handle DNS resolution failure
+      }
+    }
 
     return false
   }

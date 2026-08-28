@@ -86,12 +86,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.netrunner.adblock.AdblockBridge
-import com.netrunner.adblock.FilterManager
+import com.remmi.adblock.AdblockBridge
+import com.remmi.adblock.FilterManager
 import com.remmi.browser.security.DnsProvider
 import com.remmi.browser.security.PrivacyProfile
 import com.remmi.browser.security.TamperDetection
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.SearchEngine
 import com.remmi.browser.storage.SettingsRepository
 import com.remmi.browser.ui.components.BackgroundTypes
@@ -155,7 +155,7 @@ fun SettingsScreen(
   val filterManager = remember { FilterManager.getInstance(context, adblockBridge) }
   val subscriptions by filterManager.subscriptions.collectAsState()
 
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val integrityReport = remember { TamperDetection.checkIntegrity(context) }
   val passwordRepo = remember { com.remmi.browser.security.PasswordManagerRepository.getInstance(context) }
   val vaultLockState by passwordRepo.lockState.collectAsState()

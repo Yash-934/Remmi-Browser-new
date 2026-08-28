@@ -110,8 +110,8 @@ class AttackSimulationTest {
     val tempDir = File(System.getProperty("java.io.tmpdir"), "remmi_artifact_test_${System.currentTimeMillis()}")
     tempDir.mkdirs()
     try {
-      val walFile = File(tempDir, "netrunner_database.wal").apply { writeText("wal_data") }
-      val shmFile = File(tempDir, "netrunner_database.shm").apply { writeText("shm_data") }
+      val walFile = File(tempDir, "remmi_database.wal").apply { writeText("wal_data") }
+      val shmFile = File(tempDir, "remmi_database.shm").apply { writeText("shm_data") }
       val backupFile = File(tempDir, "old_backup.tmp").apply { writeText("backup_data") }
       val safeFile = File(tempDir, "app_icon.png").apply { writeText("png_data") }
 
@@ -177,21 +177,21 @@ class AttackSimulationTest {
 
   @Test
   fun simulateRoomMigrationDefinitions() {
-    assertNotNull(com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_1_2)
-    assertEquals(1, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_1_2.startVersion)
-    assertEquals(2, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_1_2.endVersion)
+    assertNotNull(com.remmi.browser.storage.RemmiDatabase.MIGRATION_1_2)
+    assertEquals(1, com.remmi.browser.storage.RemmiDatabase.MIGRATION_1_2.startVersion)
+    assertEquals(2, com.remmi.browser.storage.RemmiDatabase.MIGRATION_1_2.endVersion)
 
-    assertNotNull(com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_2_3)
-    assertEquals(2, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_2_3.startVersion)
-    assertEquals(3, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_2_3.endVersion)
+    assertNotNull(com.remmi.browser.storage.RemmiDatabase.MIGRATION_2_3)
+    assertEquals(2, com.remmi.browser.storage.RemmiDatabase.MIGRATION_2_3.startVersion)
+    assertEquals(3, com.remmi.browser.storage.RemmiDatabase.MIGRATION_2_3.endVersion)
 
-    assertNotNull(com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_3_4)
-    assertEquals(3, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_3_4.startVersion)
-    assertEquals(4, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_3_4.endVersion)
+    assertNotNull(com.remmi.browser.storage.RemmiDatabase.MIGRATION_3_4)
+    assertEquals(3, com.remmi.browser.storage.RemmiDatabase.MIGRATION_3_4.startVersion)
+    assertEquals(4, com.remmi.browser.storage.RemmiDatabase.MIGRATION_3_4.endVersion)
 
-    assertNotNull(com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_4_5)
-    assertEquals(4, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_4_5.startVersion)
-    assertEquals(5, com.remmi.browser.storage.NetRunnerDatabase.MIGRATION_4_5.endVersion)
+    assertNotNull(com.remmi.browser.storage.RemmiDatabase.MIGRATION_4_5)
+    assertEquals(4, com.remmi.browser.storage.RemmiDatabase.MIGRATION_4_5.startVersion)
+    assertEquals(5, com.remmi.browser.storage.RemmiDatabase.MIGRATION_4_5.endVersion)
   }
 }
 

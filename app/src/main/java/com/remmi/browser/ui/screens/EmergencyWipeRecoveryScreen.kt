@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.remmi.browser.security.PanicWipeManager
 import com.remmi.browser.security.PanicWipeState
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.ui.theme.ThemeCyber
 import kotlinx.coroutines.launch
 
@@ -34,7 +34,7 @@ fun EmergencyWipeRecoveryScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val wipeState by PanicWipeManager.state.collectAsState()
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
 
   // Automatically trigger resume on launch
   LaunchedEffect(Unit) {

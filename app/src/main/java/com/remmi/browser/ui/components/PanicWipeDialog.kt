@@ -37,7 +37,7 @@ import com.remmi.browser.security.PasswordManagerRepository
 import com.remmi.browser.security.WipePhase
 import com.remmi.browser.security.WipeStepTelemetry
 import com.remmi.browser.security.WipeVerifier
-import com.remmi.browser.storage.NetRunnerDatabase
+import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.ui.theme.ThemeCyber
 import kotlinx.coroutines.launch
 
@@ -48,7 +48,7 @@ fun PanicWipeDialog(
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
-  val database = remember { NetRunnerDatabase.getDatabase(context) }
+  val database = remember { RemmiDatabase.getDatabase(context) }
   val vaultRepo = remember { PasswordManagerRepository.getInstance(context) }
   val wipeState by PanicWipeManager.state.collectAsState()
 

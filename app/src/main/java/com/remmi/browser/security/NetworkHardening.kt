@@ -2,7 +2,7 @@ package com.remmi.browser.security
 
 import android.util.Log
 import com.remmi.browser.util.DebugLogManager
-import org.mozilla.geckoview.GeckoPreferenceController
+import com.remmi.browser.engine.GeckoPreferenceController
 import org.mozilla.geckoview.GeckoRuntime
 
 /**
@@ -220,7 +220,7 @@ object NetworkHardening {
       } else {
         // Privacy search via DuckDuckGo onion or clearnet privacy search
         val query = java.net.URLEncoder.encode(trimmed, "UTF-8")
-        trimmed = "https://duckduckgo.com/?q=$query&t=netrunner&kae=d"
+        trimmed = "https://duckduckgo.com/?q=$query&t=remmi&kae=d"
       }
     }
 

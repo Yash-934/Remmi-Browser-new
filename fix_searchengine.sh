@@ -1,1 +1,0 @@
-sed -i 's/  );/  );\n\n  companion object {\n    fun fromId(id: String): SearchEngine {\n      return values().find { it.id == id } ?: DUCK_DUCK_GO\n    }\n  }/g' app/src/main/java/com/remmi/browser/storage/SettingsRepository.kt

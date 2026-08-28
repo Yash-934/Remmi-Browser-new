@@ -27,7 +27,7 @@ data class FillPasswordPromptRequest(
 )
 
 /**
- * NetRunner Cyber Autofill & GeckoView Credential Delegate.
+ * Remmi Cyber Autofill & GeckoView Credential Delegate.
  * Enforces strict HTTPS verification, zero clearnet leaks, Fort Knox priority triage,
  * and zero-compromise credential security.
  */

@@ -197,7 +197,7 @@ data class BrowserSettings(
 class SettingsRepository(context: Context) {
 
   private val prefs: SharedPreferences =
-    context.getSharedPreferences("netrunner_sec_prefs", Context.MODE_PRIVATE)
+    context.getSharedPreferences("remmi_sec_prefs", Context.MODE_PRIVATE)
 
   private val _settings = MutableStateFlow(loadSettings())
   val settings: StateFlow<BrowserSettings> = _settings.asStateFlow()

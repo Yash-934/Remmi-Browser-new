@@ -40,6 +40,35 @@ class TabManager {
       return if (index in currentTabs.indices) currentTabs[index] else null
     }
 
+  fun getTab(tabId: String): BrowserTab? {
+    return _tabs.value.find { it.id == tabId }
+  }
+
+  fun createTab(
+    url: String = "about:blank",
+    profile: PrivacyProfile = PrivacyProfile.SHIELD,
+    isDesktop: Boolean = false,
+    containerType: ContainerType = ContainerType.fromProfile(profile),
+    securityLevel: SecurityLevel = SecurityLevel.STANDARD,
+    groupId: String? = null,
+  ): BrowserTab {
+    val newTab = BrowserTab(
+      id = UUID.randomUUID().toString(),
+      url = url,
+      title = "New Tab",
+      profile = profile,
+      containerType = containerType,
+      securityLevel = securityLevel,
+      isDesktopMode = isDesktop,
+      groupId = groupId,
+      lastAccessedAt = System.currentTimeMillis(),
+      isInactive = false,
+    )
+    _tabs.value = _tabs.value + newTab
+    _activeTabIndex.value = _tabs.value.lastIndex
+    return newTab
+  }
+
   fun openTab(
     url: String = "about:blank",
     profile: PrivacyProfile = PrivacyProfile.SHIELD,
