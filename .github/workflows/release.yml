@@ -29,11 +29,16 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "Error: KEYSTORE_BASE64 secret is missing or empty."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > release-keystore.jks
 
       - name: Build & Sign Release APK
         env:
           JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+          KEYSTORE_PATH: ${{ github.workspace }}/release-keystore.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
