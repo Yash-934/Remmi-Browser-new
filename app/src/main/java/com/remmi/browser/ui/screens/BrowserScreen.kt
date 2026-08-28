@@ -741,6 +741,9 @@ fun BrowserScreen(
             onSelectSearchEngine = { engine ->
               settingsRepo.updateSearchEngine(engine.displayName)
             },
+            onSelectTheme = { theme ->
+              settingsRepo.updateCyberTheme(theme)
+            },
             onAddSpeedDial = { item -> settingsRepo.addSpeedDial(item) },
             onEditSpeedDial = { item -> settingsRepo.editSpeedDial(item) },
             onDeleteSpeedDial = { id -> settingsRepo.removeSpeedDial(id) },

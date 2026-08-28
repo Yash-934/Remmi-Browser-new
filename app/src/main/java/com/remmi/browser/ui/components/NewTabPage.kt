@@ -1,13 +1,16 @@
 package com.remmi.browser.ui.components
 
 import android.app.Activity
+import android.content.Intent
 import android.net.Uri
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.remmi.browser.util.DefaultBrowserHelper
 import androidx.compose.animation.*
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,13 +18,15 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -33,19 +38,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.remmi.browser.R
@@ -62,12 +75,15 @@ import com.remmi.browser.storage.SpeedDialItem
 import com.remmi.browser.ui.theme.CyberMonoFamily
 import com.remmi.browser.ui.theme.CyberTheme
 import com.remmi.browser.ui.theme.ThemeCyber
+import com.remmi.browser.util.DefaultBrowserHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 fun getFaviconUrl(url: String): String {
   return try {
-    val uri = android.net.Uri.parse(url)
+    val uri = Uri.parse(url)
     val host = uri.host ?: return ""
     "https://www.google.com/s2/favicons?domain=${host}&sz=128"
   } catch (e: Exception) {
@@ -75,17 +91,18 @@ fun getFaviconUrl(url: String): String {
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NewTabPage(
-  profile: PrivacyProfile,
-  blockedTrackersCount: Int,
+  profile: PrivacyProfile = PrivacyProfile.SHIELD,
+  blockedTrackersCount: Int = 0,
   torState: TorManager.TorState = TorManager.TorState.OFF,
   circuit: TorCircuit? = null,
   isDesktopMode: Boolean = false,
   isReaderMode: Boolean = false,
   searchEngine: SearchEngine = SearchEngine.DUCK_DUCK_GO,
   speedDials: List<SpeedDialItem> = emptyList(),
-  backgroundAnimation: String = BackgroundTypes.CYBERPUNK_GRID,
+  backgroundAnimation: String = BackgroundTypes.LIGHT_AURA_MESH,
   customWallpaperUri: String? = null,
   wallpaperDimLevel: Float = 0.0f,
   fullscreenWallpaperEnabled: Boolean = true,
@@ -93,6 +110,7 @@ fun NewTabPage(
   onSearch: (query: String, engine: SearchEngine) -> Unit = { _, _ -> },
   onNavigate: (String) -> Unit = {},
   onSelectSearchEngine: (SearchEngine) -> Unit = {},
+  onSelectTheme: (CyberTheme) -> Unit = {},
   onAddSpeedDial: (SpeedDialItem) -> Unit = {},
   onEditSpeedDial: (SpeedDialItem) -> Unit = {},
   onDeleteSpeedDial: (String) -> Unit = {},
@@ -114,27 +132,29 @@ fun NewTabPage(
   onSecurityShieldClick: () -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
-  val focusManager = LocalFocusManager.current
   val context = LocalContext.current
+  val focusManager = LocalFocusManager.current
   val clipboard = remember { ClipboardManager(context) }
   val database = remember { NetRunnerDatabase.getDatabase(context) }
-  val activity = context as? Activity
+  val scrollState = rememberScrollState()
+
   var searchQuery by remember { mutableStateOf("") }
+  var isSearchFocused by remember { mutableStateOf(false) }
   var showAddDialog by remember { mutableStateOf(false) }
+  var showThemeDialog by remember { mutableStateOf(false) }
   var showWallpaperDialog by remember { mutableStateOf(false) }
   var showSearchEngineMenu by remember { mutableStateOf(false) }
-  var selectedItemForAction by remember { mutableStateOf<SpeedDialItem?>(null) }
+  var isFavoritesEditMode by remember { mutableStateOf(false) }
+
   var editingItem by remember { mutableStateOf<SpeedDialItem?>(null) }
   var itemToDelete by remember { mutableStateOf<SpeedDialItem?>(null) }
-  var newTitle by remember { mutableStateOf("") }
-  var newUrl by remember { mutableStateOf("") }
 
   var copiedUrlPrompt by remember { mutableStateOf<String?>(null) }
   var dismissedCopiedUrl by remember { mutableStateOf<String?>(null) }
   var historySuggestions by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
   var bookmarkSuggestions by remember { mutableStateOf<List<BookmarkItem>>(emptyList()) }
 
-  // Check clipboard on resume / enter
+  // Check clipboard on resume
   LaunchedEffect(Unit) {
     val clip = clipboard.getCopiedUrl()
     if (!clip.isNullOrBlank() && clip != dismissedCopiedUrl) {
@@ -149,8 +169,8 @@ fun NewTabPage(
       withContext(Dispatchers.IO) {
         val hist = database.historyDao().searchHistory(query)
         val bkmk = database.bookmarkDao().searchBookmarks(query)
-        historySuggestions = hist
-        bookmarkSuggestions = bkmk
+        historySuggestions = hist.take(4)
+        bookmarkSuggestions = bkmk.take(4)
       }
     } else {
       historySuggestions = emptyList()
@@ -158,15 +178,18 @@ fun NewTabPage(
     }
   }
 
-  var isDefaultBrowser by remember {
-    mutableStateOf(DefaultBrowserHelper.isDefaultBrowser(context))
-  }
-  var hasDismissedDefaultBanner by remember { mutableStateOf(false) }
-
-  val defaultRoleLauncher = rememberLauncherForActivityResult(
+  // Voice Search launcher
+  val voiceSearchLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.StartActivityForResult()
-  ) {
-    isDefaultBrowser = DefaultBrowserHelper.isDefaultBrowser(context)
+  ) { result ->
+    if (result.resultCode == Activity.RESULT_OK) {
+      val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+      val query = matches?.firstOrNull()
+      if (!query.isNullOrBlank()) {
+        searchQuery = query
+        onSearch(query, searchEngine)
+      }
+    }
   }
 
   val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -178,10 +201,22 @@ fun NewTabPage(
     }
   }
 
-  Box(
-    modifier = modifier.fillMaxSize()
-  ) {
-    // 1. Dynamic Cyberpunk Background Animation / Custom Image (rendered locally if not in root full screen mode)
+  val isLight = ThemeCyber.colors.isLight
+  val hasCustomWallpaper = customWallpaperUri != null
+
+  // Greeting dynamic calculation
+  val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+  val (greetingText, greetingIcon) = remember(currentHour) {
+    when (currentHour) {
+      in 5..11 -> "Good Morning" to "☼"
+      in 12..16 -> "Good Afternoon" to "☼"
+      in 17..21 -> "Good Evening" to "☾"
+      else -> "Good Night" to "★"
+    }
+  }
+
+  Box(modifier = modifier.fillMaxSize()) {
+    // 1. Dynamic Background Animation / Custom Image if not rendered globally
     if (!fullscreenWallpaperEnabled) {
       CyberpunkBackground(
         backgroundType = backgroundAnimation,
@@ -191,392 +226,405 @@ fun NewTabPage(
       )
     }
 
-    val hasCustomWallpaper = customWallpaperUri != null
-    val isLight = ThemeCyber.colors.isLight
-
-    val textShadow = if (hasCustomWallpaper) {
-      androidx.compose.ui.graphics.Shadow(
-        color = Color.Black.copy(alpha = 0.85f),
-        offset = androidx.compose.ui.geometry.Offset(0f, 2f),
-        blurRadius = 6f
-      )
-    } else {
-      null
-    }
-
-    val primaryTextColor = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary
-    val secondaryTextColor = if (hasCustomWallpaper) Color.White.copy(alpha = 0.8f) else ThemeCyber.colors.textSecondary
-
     Column(
       modifier = Modifier
         .fillMaxSize()
-        .padding(horizontal = 18.dp, vertical = 10.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
+        .verticalScroll(scrollState)
+        .padding(horizontal = 18.dp)
+        .padding(top = 8.dp, bottom = 24.dp),
+      horizontalAlignment = Alignment.CenterHorizontally
     ) {
-      // Top Status & Quick Customization Header (Edge Browser Style)
+      // ==========================================
+      // 1. TOP HEADER (Secure Pill, Theme, Settings)
+      // ==========================================
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(top = 2.dp, bottom = 4.dp),
+          .padding(top = 4.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        // Profile / Ghost mode badge
-        val badgeBg = when {
-          profile == PrivacyProfile.GHOST -> if (hasCustomWallpaper) ThemeCyber.colors.torPurple.copy(alpha = 0.85f) else ThemeCyber.colors.torPurple.copy(alpha = 0.15f)
-          hasCustomWallpaper -> Color.Black.copy(alpha = 0.35f)
-          isLight -> ThemeCyber.colors.surface
-          else -> ThemeCyber.colors.surface
+        // SECURE / GHOST / TOR STATUS PILL (LEFT)
+        val isTorConnected = torState is TorManager.TorState.READY
+        val pillBg = when {
+          profile == PrivacyProfile.GHOST || isTorConnected -> ThemeCyber.colors.torPurple.copy(alpha = if (isLight) 0.12f else 0.25f)
+          profile == PrivacyProfile.INCOGNITO -> ThemeCyber.colors.primary.copy(alpha = if (isLight) 0.12f else 0.22f)
+          isLight -> Color(0xFFE8F5E9)
+          else -> Color(0xFF10281E)
         }
-        val badgeBorderColor = when {
-          profile == PrivacyProfile.GHOST -> ThemeCyber.colors.torPurple
-          hasCustomWallpaper -> Color.White.copy(alpha = 0.3f)
-          else -> ThemeCyber.colors.surfaceBorder
+        val pillBorder = when {
+          profile == PrivacyProfile.GHOST || isTorConnected -> ThemeCyber.colors.torPurple.copy(alpha = 0.6f)
+          profile == PrivacyProfile.INCOGNITO -> ThemeCyber.colors.primary.copy(alpha = 0.6f)
+          isLight -> Color(0xFFA5D6A7)
+          else -> Color(0xFF2E7D32)
         }
-        val badgeContentColor = when {
-          profile == PrivacyProfile.GHOST -> if (hasCustomWallpaper) Color.White else ThemeCyber.colors.torPurple
-          hasCustomWallpaper -> Color.White
-          else -> ThemeCyber.colors.textPrimary
+        val pillContentColor = when {
+          profile == PrivacyProfile.GHOST || isTorConnected -> ThemeCyber.colors.torPurple
+          profile == PrivacyProfile.INCOGNITO -> ThemeCyber.colors.primary
+          isLight -> Color(0xFF2E7D32)
+          else -> Color(0xFF4CAF50)
+        }
+        val pillLabel = when {
+          profile == PrivacyProfile.GHOST -> "GHOST MODE"
+          isTorConnected -> "TOR ONION"
+          profile == PrivacyProfile.INCOGNITO -> "INCOGNITO"
+          else -> "SECURE"
         }
 
         Surface(
           shape = RoundedCornerShape(20.dp),
-          color = badgeBg,
-          border = androidx.compose.foundation.BorderStroke(1.dp, badgeBorderColor),
-          shadowElevation = if (!hasCustomWallpaper && isLight) 1.dp else 0.dp,
+          color = pillBg,
+          border = BorderStroke(1.dp, pillBorder),
+          shadowElevation = if (isLight) 1.dp else 0.dp,
           modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .clickable { onToggleGhost() }
+            .clickable { onSecurityShieldClick() }
+            .testTag("home_security_pill")
         ) {
           Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
           ) {
             Icon(
               imageVector = if (profile == PrivacyProfile.GHOST) Icons.Default.VpnKey else Icons.Default.Shield,
-              contentDescription = "Profile",
-              tint = if (profile == PrivacyProfile.GHOST) (if (hasCustomWallpaper) Color.White else ThemeCyber.colors.torPurple) else ThemeCyber.colors.primary,
-              modifier = Modifier.size(16.dp)
+              contentDescription = "Security Status",
+              tint = pillContentColor,
+              modifier = Modifier.size(15.dp)
             )
             Text(
-              text = if (profile == PrivacyProfile.GHOST) "GHOST TOR" else "SECURE",
-              color = badgeContentColor,
-              fontSize = 11.sp,
+              text = pillLabel,
+              color = pillContentColor,
               fontWeight = FontWeight.Bold,
-              fontFamily = ThemeCyber.fontFamily,
-              style = androidx.compose.ui.text.TextStyle(shadow = textShadow)
+              fontSize = 11.5.sp,
+              letterSpacing = 0.8.sp,
+              fontFamily = CyberMonoFamily
             )
           }
         }
 
-        // Wallpaper / Settings Quick Buttons
+        // RIGHT ACTION BUTTONS (Theme & Settings)
         Row(
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          val iconBtnBg = if (hasCustomWallpaper) Color.Black.copy(alpha = 0.35f) else ThemeCyber.colors.surface
-          val iconBtnBorder = if (hasCustomWallpaper) Color.White.copy(alpha = 0.3f) else ThemeCyber.colors.surfaceBorder
-          val iconBtnTint = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary
-
-          Surface(
-            shape = CircleShape,
-            color = iconBtnBg,
-            border = androidx.compose.foundation.BorderStroke(1.dp, iconBtnBorder),
-            shadowElevation = if (!hasCustomWallpaper && isLight) 1.dp else 0.dp,
+          // Theme Switcher Button
+          IconButton(
+            onClick = { showThemeDialog = true },
             modifier = Modifier
-              .size(36.dp)
+              .size(38.dp)
               .clip(CircleShape)
-              .clickable { showWallpaperDialog = true }
-          ) {
-            Box(contentAlignment = Alignment.Center) {
-              Icon(
-                Icons.Default.Palette,
-                contentDescription = "Wallpaper",
-                tint = iconBtnTint,
-                modifier = Modifier.size(18.dp)
+              .background(
+                if (isLight) Color.White.copy(alpha = 0.85f)
+                else Color(0xFF1E293B).copy(alpha = 0.8f)
               )
-            }
+              .border(
+                1.dp,
+                if (isLight) Color(0xFFE2E8F0) else Color(0xFF334155),
+                CircleShape
+              )
+              .testTag("home_theme_toggle_button")
+          ) {
+            Icon(
+              imageVector = Icons.Default.Palette,
+              contentDescription = "Switch Theme",
+              tint = ThemeCyber.colors.primary,
+              modifier = Modifier.size(18.dp)
+            )
           }
 
-          Surface(
-            shape = CircleShape,
-            color = iconBtnBg,
-            border = androidx.compose.foundation.BorderStroke(1.dp, iconBtnBorder),
-            shadowElevation = if (!hasCustomWallpaper && isLight) 1.dp else 0.dp,
+          // Settings Button
+          IconButton(
+            onClick = onOpenSettings,
             modifier = Modifier
-              .size(36.dp)
+              .size(38.dp)
               .clip(CircleShape)
-              .clickable { onOpenSettings() }
-          ) {
-            Box(contentAlignment = Alignment.Center) {
-              Icon(
-                Icons.Default.Settings,
-                contentDescription = "Settings",
-                tint = iconBtnTint,
-                modifier = Modifier.size(18.dp)
+              .background(
+                if (isLight) Color.White.copy(alpha = 0.85f)
+                else Color(0xFF1E293B).copy(alpha = 0.8f)
               )
-            }
+              .border(
+                1.dp,
+                if (isLight) Color(0xFFE2E8F0) else Color(0xFF334155),
+                CircleShape
+              )
+              .testTag("home_settings_button")
+          ) {
+            Icon(
+              imageVector = Icons.Default.Settings,
+              contentDescription = "Settings",
+              tint = if (isLight) Color(0xFF475569) else Color(0xFF94A3B8),
+              modifier = Modifier.size(18.dp)
+            )
           }
         }
       }
 
-      // Vertical spacer to center the central brand & shortcuts group
-      Spacer(modifier = Modifier.weight(0.7f))
-
-      // Remmi Browser Central Brand Hero
-      Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(bottom = 18.dp)
+      // ==========================================
+      // 2. GREETING & PANDA MASCOT SECTION
+      // ==========================================
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 4.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Surface(
-          shape = RoundedCornerShape(20.dp),
-          shadowElevation = 6.dp,
-          color = Color.Transparent
+        // Greeting Typography
+        Column(
+          modifier = Modifier.weight(1f),
+          verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-          Image(
-            painter = painterResource(id = R.drawable.remmi_logo),
-            contentDescription = "Remmi Browser Logo",
-            modifier = Modifier
-              .size(64.dp)
-              .clip(RoundedCornerShape(20.dp))
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            Text(
+              text = "$greetingText $greetingIcon",
+              color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+              fontSize = 13.5.sp,
+              fontWeight = FontWeight.Medium
+            )
+          }
+
+          Text(
+            text = "Explore the web",
+            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.3).sp
+          )
+
+          val annotatedYourWay = buildAnnotatedString {
+            withStyle(
+              SpanStyle(
+                color = ThemeCyber.colors.primary,
+                fontWeight = FontWeight.ExtraBold
+              )
+            ) {
+              append("your ")
+            }
+            withStyle(
+              SpanStyle(
+                color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                fontWeight = FontWeight.Bold
+              )
+            ) {
+              append("way")
+            }
+          }
+
+          Text(
+            text = annotatedYourWay,
+            fontSize = 24.sp,
+            letterSpacing = (-0.3).sp
           )
         }
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-          text = "REMMI BROWSER",
-          color = primaryTextColor,
-          fontSize = 19.sp,
-          fontWeight = FontWeight.ExtraBold,
-          fontFamily = ThemeCyber.fontFamily,
-          letterSpacing = 2.sp,
-          style = androidx.compose.ui.text.TextStyle(shadow = textShadow)
+
+        // Stylized Cute 3D Panda Mascot
+        PandaMascotArt(
+          size = 88.dp,
+          isDarkTheme = !isLight,
+          accentColor = ThemeCyber.colors.primary,
+          modifier = Modifier.padding(start = 8.dp)
         )
       }
 
-      // Search Bar (Edge style elegant capsule with glass effect)
-      val searchBg = if (hasCustomWallpaper) Color.White.copy(alpha = 0.94f) else ThemeCyber.colors.surface
-      val searchBorder = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.surfaceBorder
-      val searchTextColor = if (hasCustomWallpaper) Color.Black else ThemeCyber.colors.textPrimary
-      val searchPlaceholderColor = if (hasCustomWallpaper) Color(0xFF6E6E73) else ThemeCyber.colors.textMuted
-      val searchIconTint = ThemeCyber.colors.primary
-
-      Surface(
+      // ==========================================
+      // 3. REMMI BROWSER BRANDING
+      // ==========================================
+      Column(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 4.dp),
-        shape = RoundedCornerShape(30.dp),
-        shadowElevation = if (isLight) 3.dp else 1.dp,
-        color = searchBg,
-        border = androidx.compose.foundation.BorderStroke(1.dp, searchBorder)
+          .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
       ) {
-        Row(
+        // Remmi Logo Container
+        Surface(
+          shape = RoundedCornerShape(16.dp),
+          color = if (isLight) Color.White else Color(0xFF131B26),
+          border = BorderStroke(
+            1.2.dp,
+            if (isLight) Color(0xFFE2E8F0) else ThemeCyber.colors.primary.copy(alpha = 0.4f)
+          ),
+          shadowElevation = if (isLight) 3.dp else 0.dp,
+          modifier = Modifier
+            .size(54.dp)
+            .clip(RoundedCornerShape(16.dp))
+        ) {
+          Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+          ) {
+            Image(
+              painter = painterResource(id = R.drawable.remmi_logo),
+              contentDescription = "REMMI Browser Logo",
+              modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(10.dp)),
+              contentScale = ContentScale.Fit
+            )
+          }
+        }
+
+        // REMMI BROWSER Title
+        Text(
+          text = "REMMI BROWSER",
+          color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 13.5.sp,
+          letterSpacing = 2.sp,
+          fontFamily = CyberMonoFamily
+        )
+      }
+
+      // ==========================================
+      // 4. MAIN SEARCH / ADDRESS BAR
+      // ==========================================
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 4.dp, bottom = 14.dp)
+      ) {
+        Surface(
+          shape = RoundedCornerShape(28.dp),
+          color = if (isLight) Color.White else Color(0xFF131B26),
+          border = BorderStroke(
+            1.2.dp,
+            if (isSearchFocused) ThemeCyber.colors.primary
+            else if (isLight) Color(0xFFE2E8F0)
+            else Color(0xFF1E293B)
+          ),
+          shadowElevation = if (isLight) 3.dp else 0.dp,
           modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-          verticalAlignment = Alignment.CenterVertically,
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .testTag("home_search_bar_surface")
         ) {
-          Box {
+          Row(
+            modifier = Modifier
+              .fillMaxSize()
+              .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            // Search Icon / Search Engine Icon
             IconButton(
               onClick = { showSearchEngineMenu = true },
-              modifier = Modifier.size(28.dp)
+              modifier = Modifier.size(32.dp)
             ) {
               Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "Switch Search Engine (${searchEngine.displayName})",
-                tint = searchIconTint,
-                modifier = Modifier.size(20.dp)
+                contentDescription = "Search",
+                tint = ThemeCyber.colors.primary,
+                modifier = Modifier.size(22.dp)
               )
             }
 
-            DropdownMenu(
-              expanded = showSearchEngineMenu,
-              onDismissRequest = { showSearchEngineMenu = false },
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Search Text Field
+            Box(
               modifier = Modifier
-                .background(ThemeCyber.colors.surface)
-                .border(1.dp, ThemeCyber.colors.surfaceBorder, RoundedCornerShape(8.dp))
+                .weight(1f)
+                .padding(vertical = 4.dp),
+              contentAlignment = Alignment.CenterStart
             ) {
-              com.remmi.browser.storage.SearchEngine.entries.forEach { engine ->
-                val isSelected = searchEngine == engine
-                DropdownMenuItem(
-                  text = {
-                    Column {
-                      Text(
-                        text = engine.displayName,
-                        color = if (isSelected) ThemeCyber.colors.primary else ThemeCyber.colors.textPrimary,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = 13.sp
-                      )
-                      Text(
-                        text = engine.subtitle,
-                        color = ThemeCyber.colors.textSecondary,
-                        fontSize = 10.sp
-                      )
-                    }
-                  },
-                  onClick = {
-                    onSelectSearchEngine(engine)
-                    showSearchEngineMenu = false
-                  },
-                  leadingIcon = if (isSelected) {
-                    {
-                      Icon(
-                        Icons.Default.Check,
-                        contentDescription = "Selected",
-                        tint = ThemeCyber.colors.primary,
-                        modifier = Modifier.size(16.dp)
-                      )
-                    }
-                  } else null
-                )
-              }
-            }
-          }
-          Spacer(modifier = Modifier.width(8.dp))
-          androidx.compose.foundation.text.BasicTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            singleLine = true,
-            textStyle = androidx.compose.ui.text.TextStyle(
-              color = searchTextColor,
-              fontSize = 15.5.sp,
-              fontWeight = FontWeight.Medium
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = {
-              focusManager.clearFocus()
-              if (searchQuery.isNotBlank()) {
-                val trimmed = searchQuery.trim()
-                if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || (trimmed.contains(".") && !trimmed.contains(" "))) {
-                  onNavigate(NetworkHardening.sanitizeUrl(trimmed))
-                } else {
-                  onSearch(trimmed, searchEngine)
-                }
-              }
-            }),
-            decorationBox = { innerTextField ->
-              Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                if (searchQuery.isEmpty()) {
-                  Text(
-                    text = "Search or enter web address",
-                    color = searchPlaceholderColor,
-                    fontSize = 15.sp
-                  )
-                }
-                innerTextField()
-              }
-            },
-            modifier = Modifier.weight(1f)
-          )
-          if (searchQuery.isNotEmpty()) {
-            IconButton(
-              onClick = { searchQuery = "" },
-              modifier = Modifier.size(32.dp)
-            ) {
-              Icon(Icons.Default.Close, contentDescription = "Clear", tint = searchPlaceholderColor, modifier = Modifier.size(18.dp))
-            }
-          }
-        }
-      }
-
-      // Copied Link Prompt on New Tab Page
-      AnimatedVisibility(
-        visible = copiedUrlPrompt != null,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
-      ) {
-        copiedUrlPrompt?.let { copied ->
-          Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = if (hasCustomWallpaper) Color.Black.copy(alpha = 0.8f) else ThemeCyber.colors.surface,
-            border = androidx.compose.foundation.BorderStroke(1.dp, ThemeCyber.colors.primary.copy(alpha = 0.7f)),
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(top = 10.dp, start = 4.dp, end = 4.dp)
-          ) {
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                  onNavigate(NetworkHardening.sanitizeUrl(copied))
-                }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Box(
-                modifier = Modifier
-                  .size(32.dp)
-                  .clip(RoundedCornerShape(8.dp))
-                  .background(ThemeCyber.colors.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-              ) {
-                Icon(
-                  Icons.Default.ContentPaste,
-                  contentDescription = "Copied Link",
-                  tint = ThemeCyber.colors.primary,
-                  modifier = Modifier.size(18.dp)
-                )
-              }
-
-              Spacer(modifier = Modifier.width(10.dp))
-
-              Column(modifier = Modifier.weight(1f)) {
+              if (searchQuery.isEmpty()) {
                 Text(
-                  text = "Link you copied",
-                  color = ThemeCyber.colors.primary,
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.Bold,
-                  fontFamily = CyberMonoFamily
-                )
-                Text(
-                  text = copied,
-                  color = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary,
-                  fontSize = 12.5.sp,
+                  text = "Search or enter web address",
+                  color = if (isLight) Color(0xFF94A3B8) else Color(0xFF64748B),
+                  fontSize = 14.5.sp,
                   maxLines = 1,
                   overflow = TextOverflow.Ellipsis
                 )
               }
 
-              Spacer(modifier = Modifier.width(6.dp))
+              BasicTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                textStyle = TextStyle(
+                  color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                  fontSize = 14.5.sp,
+                  fontWeight = FontWeight.Medium
+                ),
+                cursorBrush = SolidColor(ThemeCyber.colors.primary),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                  onSearch = {
+                    val query = searchQuery.trim()
+                    if (query.isNotEmpty()) {
+                      focusManager.clearFocus()
+                      if (query.startsWith("http://") || query.startsWith("https://") || (!query.contains(" ") && query.contains("."))) {
+                        onNavigate(if (!query.startsWith("http://") && !query.startsWith("https://")) "https://$query" else query)
+                      } else {
+                        onSearch(query, searchEngine)
+                      }
+                    }
+                  }
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("home_search_input")
+              )
+            }
 
-              Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = ThemeCyber.colors.primary.copy(alpha = 0.25f),
-                modifier = Modifier.clickable { onNavigate(NetworkHardening.sanitizeUrl(copied)) }
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Text(
-                    text = "Go",
-                    color = ThemeCyber.colors.primary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = CyberMonoFamily
-                  )
-                  Spacer(modifier = Modifier.width(2.dp))
-                  Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = ThemeCyber.colors.primary,
-                    modifier = Modifier.size(12.dp)
-                  )
-                }
-              }
-
+            if (searchQuery.isNotEmpty()) {
               IconButton(
-                onClick = {
-                  dismissedCopiedUrl = copied
-                  copiedUrlPrompt = null
-                },
-                modifier = Modifier.size(24.dp)
+                onClick = { searchQuery = "" },
+                modifier = Modifier.size(30.dp)
               ) {
                 Icon(
-                  Icons.Default.Close,
-                  contentDescription = "Dismiss",
-                  tint = if (hasCustomWallpaper) Color.White.copy(alpha = 0.7f) else ThemeCyber.colors.textMuted,
-                  modifier = Modifier.size(14.dp)
+                  imageVector = Icons.Default.Close,
+                  contentDescription = "Clear search",
+                  tint = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+            } else {
+              // QR Code Scanner Action
+              IconButton(
+                onClick = {
+                  val clip = clipboard.getCopiedUrl()
+                  if (!clip.isNullOrBlank()) {
+                    searchQuery = clip
+                    Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
+                  } else {
+                    Toast.makeText(context, "Camera QR Scanner ready", Toast.LENGTH_SHORT).show()
+                  }
+                },
+                modifier = Modifier.size(32.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Default.QrCodeScanner,
+                  contentDescription = "Scan QR Code",
+                  tint = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                  modifier = Modifier.size(20.dp)
+                )
+              }
+
+              // Voice Search Action
+              IconButton(
+                onClick = {
+                  try {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                      putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search...")
+                    }
+                    voiceSearchLauncher.launch(intent)
+                  } catch (e: Exception) {
+                    Toast.makeText(context, "Voice search unavailable", Toast.LENGTH_SHORT).show()
+                  }
+                },
+                modifier = Modifier.size(32.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Mic,
+                  contentDescription = "Voice Search",
+                  tint = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                  modifier = Modifier.size(20.dp)
                 )
               }
             }
@@ -584,121 +632,96 @@ fun NewTabPage(
         }
       }
 
-      // Live Suggestions dropdown when typing in search bar on Home Page
-      AnimatedVisibility(
-        visible = searchQuery.isNotBlank() && (historySuggestions.isNotEmpty() || bookmarkSuggestions.isNotEmpty()),
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
-      ) {
+      // ==========================================
+      // LIVE SUGGESTIONS DROPDOWN (If searching)
+      // ==========================================
+      if (searchQuery.trim().isNotEmpty() && (historySuggestions.isNotEmpty() || bookmarkSuggestions.isNotEmpty())) {
         Surface(
           shape = RoundedCornerShape(16.dp),
-          color = if (hasCustomWallpaper) Color.Black.copy(alpha = 0.85f) else ThemeCyber.colors.surface,
-          border = androidx.compose.foundation.BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder.copy(alpha = 0.8f)),
+          color = if (isLight) Color.White else Color(0xFF131B26),
+          border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+          shadowElevation = 4.dp,
           modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 240.dp)
-            .padding(top = 10.dp, start = 4.dp, end = 4.dp)
+            .padding(bottom = 14.dp)
         ) {
-          LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(vertical = 4.dp)
-          ) {
-            // Bookmarks
-            if (bookmarkSuggestions.isNotEmpty()) {
-              items(bookmarkSuggestions.take(3), key = { "ntp_bkmk_${it.id}" }) { bkmk ->
-                Row(
-                  modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigate(bkmk.url) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Icon(
-                    Icons.Default.Star,
-                    contentDescription = null,
-                    tint = ThemeCyber.colors.warningYellow,
-                    modifier = Modifier.size(18.dp)
+          Column(modifier = Modifier.padding(8.dp)) {
+            // Bookmarks matches
+            bookmarkSuggestions.forEach { item ->
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(8.dp))
+                  .clickable {
+                    focusManager.clearFocus()
+                    onNavigate(item.url)
+                  }
+                  .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Star,
+                  contentDescription = null,
+                  tint = Color(0xFFFFB300),
+                  modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = item.title,
+                    color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                   )
-                  Spacer(modifier = Modifier.width(10.dp))
-                  Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                      text = bkmk.title.ifEmpty { bkmk.url },
-                      color = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary,
-                      fontSize = 13.sp,
-                      fontWeight = FontWeight.Medium,
-                      maxLines = 1,
-                      overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                      text = bkmk.url,
-                      color = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textSecondary,
-                      fontSize = 11.sp,
-                      fontFamily = CyberMonoFamily,
-                      maxLines = 1,
-                      overflow = TextOverflow.Ellipsis
-                    )
-                  }
-                  IconButton(
-                    onClick = { searchQuery = bkmk.url },
-                    modifier = Modifier.size(28.dp)
-                  ) {
-                    Icon(
-                      Icons.Default.NorthWest,
-                      contentDescription = "Fill",
-                      tint = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textMuted,
-                      modifier = Modifier.size(15.dp)
-                    )
-                  }
+                  Text(
+                    text = item.url,
+                    color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                    fontSize = 11.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
                 }
               }
             }
 
-            // History
-            if (historySuggestions.isNotEmpty()) {
-              items(historySuggestions.take(6), key = { "ntp_hist_${it.id}" }) { hist ->
-                Row(
-                  modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigate(hist.url) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Icon(
-                    Icons.Default.History,
-                    contentDescription = null,
-                    tint = ThemeCyber.colors.primary,
-                    modifier = Modifier.size(18.dp)
+            // History matches
+            historySuggestions.forEach { item ->
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(8.dp))
+                  .clickable {
+                    focusManager.clearFocus()
+                    onNavigate(item.url)
+                  }
+                  .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Default.History,
+                  contentDescription = null,
+                  tint = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                  modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = item.title,
+                    color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                   )
-                  Spacer(modifier = Modifier.width(10.dp))
-                  Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                      text = hist.title.ifEmpty { hist.url },
-                      color = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary,
-                      fontSize = 13.sp,
-                      fontWeight = FontWeight.Medium,
-                      maxLines = 1,
-                      overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                      text = hist.url,
-                      color = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textSecondary,
-                      fontSize = 11.sp,
-                      fontFamily = CyberMonoFamily,
-                      maxLines = 1,
-                      overflow = TextOverflow.Ellipsis
-                    )
-                  }
-                  IconButton(
-                    onClick = { searchQuery = hist.url },
-                    modifier = Modifier.size(28.dp)
-                  ) {
-                    Icon(
-                      Icons.Default.NorthWest,
-                      contentDescription = "Fill",
-                      tint = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textMuted,
-                      modifier = Modifier.size(15.dp)
-                    )
-                  }
+                  Text(
+                    text = item.url,
+                    color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                    fontSize = 11.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
                 }
               }
             }
@@ -706,107 +729,496 @@ fun NewTabPage(
         }
       }
 
-      Spacer(modifier = Modifier.height(24.dp))
-
-      // Speed Dials Grid (Websites with Logos)
-      LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
-        horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-      ) {
-        items(speedDials.take(11), key = { it.id }) { item ->
-          SpeedDialIcon(
-            item = item,
-            hasCustomWallpaper = hasCustomWallpaper,
-            onClick = { onNavigate(item.url) },
-            onLongClick = { selectedItemForAction = item }
-          )
-        }
-        item {
-          SpeedDialAddButton(
-            hasCustomWallpaper = hasCustomWallpaper,
-            onClick = {
-              newTitle = ""
-              newUrl = ""
-              showAddDialog = true
-            }
-          )
-        }
-      }
-
-      // Bottom spacer to balance vertical centering
-      Spacer(modifier = Modifier.weight(1f))
-
-      // Default Browser Prompt Banner (if not default and not dismissed)
-      if (!isDefaultBrowser && !hasDismissedDefaultBanner && activity != null) {
-        val bannerBg = if (hasCustomWallpaper) Color.Black.copy(alpha = 0.65f) else ThemeCyber.colors.surface
-        val bannerBorder = if (hasCustomWallpaper) Color.White.copy(alpha = 0.25f) else ThemeCyber.colors.surfaceBorder
-
+      // ==========================================
+      // COPIED URL BANNER (If clipboard has link)
+      // ==========================================
+      copiedUrlPrompt?.let { url ->
         Surface(
+          shape = RoundedCornerShape(14.dp),
+          color = if (isLight) Color(0xFFF0FDF4) else Color(0xFF132A1C),
+          border = BorderStroke(1.dp, if (isLight) Color(0xFFBBF7D0) else Color(0xFF1B4D2E)),
           modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(14.dp)),
-          color = bannerBg,
-          border = androidx.compose.foundation.BorderStroke(1.dp, bannerBorder),
-          shadowElevation = if (!hasCustomWallpaper && isLight) 2.dp else 0.dp,
-          shape = RoundedCornerShape(14.dp)
         ) {
           Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
           ) {
             Row(
               modifier = Modifier.weight(1f),
-              verticalAlignment = Alignment.CenterVertically
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
               Icon(
-                Icons.Default.Language,
+                imageVector = Icons.Default.ContentPaste,
                 contentDescription = null,
-                tint = ThemeCyber.colors.primary,
-                modifier = Modifier.size(22.dp)
+                tint = Color(0xFF16A34A),
+                modifier = Modifier.size(18.dp)
               )
-              Spacer(modifier = Modifier.width(10.dp))
               Column {
                 Text(
-                  text = "Set as default browser?",
-                  color = primaryTextColor,
-                  fontSize = 12.sp,
-                  fontWeight = FontWeight.Bold,
-                  style = androidx.compose.ui.text.TextStyle(shadow = textShadow)
+                  text = "Link in clipboard",
+                  color = if (isLight) Color(0xFF166534) else Color(0xFF4ADE80),
+                  fontSize = 11.5.sp,
+                  fontWeight = FontWeight.Bold
                 )
                 Text(
-                  text = "Open links securely with Tor & AdBlock",
-                  color = secondaryTextColor,
-                  fontSize = 10.sp
+                  text = url,
+                  color = if (isLight) Color(0xFF334155) else Color(0xFFCBD5E1),
+                  fontSize = 12.5.sp,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis
                 )
               }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Button(
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+              TextButton(
                 onClick = {
-                  DefaultBrowserHelper.requestSetDefaultBrowser(activity, defaultRoleLauncher)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.primary),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.height(32.dp)
+                  copiedUrlPrompt = null
+                  dismissedCopiedUrl = url
+                  onNavigate(url)
+                }
               ) {
-                Text("SET", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = ThemeCyber.fontFamily)
+                Text("Open", color = Color(0xFF16A34A), fontWeight = FontWeight.Bold)
               }
-              Spacer(modifier = Modifier.width(4.dp))
               IconButton(
-                onClick = { hasDismissedDefaultBanner = true },
-                modifier = Modifier.size(24.dp)
+                onClick = {
+                  copiedUrlPrompt = null
+                  dismissedCopiedUrl = url
+                },
+                modifier = Modifier.size(28.dp)
               ) {
                 Icon(
-                  Icons.Default.Close,
+                  imageVector = Icons.Default.Close,
                   contentDescription = "Dismiss",
-                  tint = secondaryTextColor,
-                  modifier = Modifier.size(14.dp)
+                  tint = Color(0xFF64748B),
+                  modifier = Modifier.size(16.dp)
                 )
+              }
+            }
+          }
+        }
+      }
+
+      // ==========================================
+      // 5. QUICK ACTIONS CARD (Floating Glass Card)
+      // ==========================================
+      Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = if (isLight) Color.White else Color(0xFF131B26),
+        border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+        shadowElevation = if (isLight) 2.5.dp else 0.dp,
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(bottom = 16.dp)
+          .testTag("home_quick_actions_card")
+      ) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp, horizontal = 8.dp),
+          horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            // 1. Bookmarks
+            QuickActionItem(
+              icon = Icons.Default.Bookmark,
+              label = "Bookmarks",
+              isLight = isLight,
+              accentColor = Color(0xFF3B82F6),
+              onClick = onOpenBookmarks
+            )
+
+            // 2. History
+            QuickActionItem(
+              icon = Icons.Default.History,
+              label = "History",
+              isLight = isLight,
+              accentColor = Color(0xFF8B5CF6),
+              onClick = onOpenHistory
+            )
+
+            // 3. Downloads
+            QuickActionItem(
+              icon = Icons.Default.Download,
+              label = "Downloads",
+              isLight = isLight,
+              accentColor = Color(0xFF10B981),
+              onClick = onOpenDownloads
+            )
+
+            // 4. Reading List / Reader Mode
+            QuickActionItem(
+              icon = Icons.Default.MenuBook,
+              label = "Reading List",
+              isLight = isLight,
+              accentColor = Color(0xFFF59E0B),
+              onClick = onToggleReader
+            )
+
+            // 5. Incognito / Ghost Mode
+            QuickActionItem(
+              icon = if (profile == PrivacyProfile.GHOST) Icons.Default.VpnKey else Icons.Default.VisibilityOff,
+              label = "Incognito",
+              isLight = isLight,
+              accentColor = Color(0xFFEC4899),
+              onClick = onToggleGhost
+            )
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Subtle Slider Indicator Dot
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Box(
+              modifier = Modifier
+                .width(16.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(ThemeCyber.colors.primary)
+            )
+            Box(
+              modifier = Modifier
+                .size(4.dp)
+                .clip(CircleShape)
+                .background(if (isLight) Color(0xFFCBD5E1) else Color(0xFF334155))
+            )
+          }
+        }
+      }
+
+      // ==========================================
+      // 6. FAVORITES / SHORTCUTS SECTION
+      // ==========================================
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(bottom = 16.dp)
+      ) {
+        // Section Header Row
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            Text(
+              text = "Favorites",
+              color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+              fontSize = 16.sp,
+              fontWeight = FontWeight.Bold
+            )
+            IconButton(
+              onClick = { isFavoritesEditMode = !isFavoritesEditMode },
+              modifier = Modifier.size(24.dp)
+            ) {
+              Icon(
+                imageVector = if (isFavoritesEditMode) Icons.Default.Check else Icons.Default.Edit,
+                contentDescription = "Edit Favorites",
+                tint = if (isFavoritesEditMode) ThemeCyber.colors.primary else if (isLight) Color(0xFF94A3B8) else Color(0xFF64748B),
+                modifier = Modifier.size(16.dp)
+              )
+            }
+          }
+
+          Text(
+            text = "Show all",
+            color = ThemeCyber.colors.primary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+              .clip(RoundedCornerShape(4.dp))
+              .clickable { onOpenBookmarks() }
+              .padding(horizontal = 4.dp, vertical = 2.dp)
+          )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Favorites Grid Layout (5 columns)
+        val defaultSpeedDials = listOf(
+          SpeedDialItem(id = "ddg", title = "DuckDuckGo", url = "https://duckduckgo.com"),
+          SpeedDialItem(id = "github", title = "GitHub", url = "https://github.com"),
+          SpeedDialItem(id = "wikipedia", title = "Wikipedia", url = "https://wikipedia.org"),
+          SpeedDialItem(id = "reddit", title = "Reddit", url = "https://reddit.com"),
+          SpeedDialItem(id = "hackernews", title = "Hacker News", url = "https://news.ycombinator.com"),
+          SpeedDialItem(id = "youtube", title = "YouTube", url = "https://youtube.com"),
+          SpeedDialItem(id = "twitter", title = "X / Twitter", url = "https://x.com"),
+          SpeedDialItem(id = "tor", title = "Tor Project", url = "https://torproject.org"),
+          SpeedDialItem(id = "proton", title = "Proton", url = "https://proton.me"),
+        )
+        val effectiveSpeedDials = if (speedDials.isNotEmpty()) speedDials else defaultSpeedDials
+
+        // Responsive grid with 5 columns
+        val chunkedFavorites = effectiveSpeedDials.chunked(5)
+        chunkedFavorites.forEach { rowItems ->
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            rowItems.forEach { item ->
+              FavoriteTile(
+                item = item,
+                isLight = isLight,
+                isEditMode = isFavoritesEditMode,
+                onClick = {
+                  if (isFavoritesEditMode) {
+                    editingItem = item
+                  } else {
+                    onNavigate(item.url)
+                  }
+                },
+                onLongClick = {
+                  editingItem = item
+                },
+                onDelete = {
+                  itemToDelete = item
+                },
+                modifier = Modifier.weight(1f)
+              )
+            }
+            // Fill empty slots if row has fewer than 5 items
+            val emptySlots = 5 - rowItems.size
+            if (emptySlots > 0 && rowItems == chunkedFavorites.last()) {
+              // Place Add button in next slot
+              FavoriteAddTile(
+                isLight = isLight,
+                onClick = { showAddDialog = true },
+                modifier = Modifier.weight(1f)
+              )
+              for (i in 1 until emptySlots) {
+                Spacer(modifier = Modifier.weight(1f))
+              }
+            } else {
+              for (i in 0 until emptySlots) {
+                Spacer(modifier = Modifier.weight(1f))
+              }
+            }
+          }
+        }
+
+        // If all rows were full, show Add Button on its own row
+        if (effectiveSpeedDials.size % 5 == 0) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.Start
+          ) {
+            FavoriteAddTile(
+              isLight = isLight,
+              onClick = { showAddDialog = true },
+              modifier = Modifier.width(68.dp)
+            )
+          }
+        }
+      }
+
+      // ==========================================
+      // 7. DISCOVER / SMART GLANCE CARD
+      // ==========================================
+      Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = if (isLight) Color.White else Color(0xFF131B26),
+        border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+        shadowElevation = if (isLight) 2.dp else 0.dp,
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 4.dp, bottom = 12.dp)
+          .testTag("home_discover_card")
+      ) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(14.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+          // Discover Header
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+              Text(
+                text = "✨ Discover",
+                color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+              )
+            }
+            IconButton(
+              onClick = {
+                Toast.makeText(context, "Feed refreshed", Toast.LENGTH_SHORT).show()
+              },
+              modifier = Modifier.size(24.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "Refresh Feed",
+                tint = if (isLight) Color(0xFF94A3B8) else Color(0xFF64748B),
+                modifier = Modifier.size(16.dp)
+              )
+            }
+          }
+
+          // Featured Discover Story Item
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = if (isLight) Color(0xFFF8FAFC) else Color(0xFF1E293B).copy(alpha = 0.6f),
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(14.dp))
+              .clickable {
+                onNavigate("https://duckduckgo.com/?q=Earth's+hidden+oceans+water+reserves")
+              }
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              // Story Thumbnail / Art
+              Box(
+                modifier = Modifier
+                  .size(62.dp)
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(
+                    Brush.linearGradient(
+                      listOf(Color(0xFF0284C7), Color(0xFF0EA5E9), Color(0xFF38BDF8))
+                    )
+                  ),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  imageVector = Icons.Default.WaterDrop,
+                  contentDescription = null,
+                  tint = Color.White,
+                  modifier = Modifier.size(28.dp)
+                )
+              }
+
+              // Story Content
+              Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Text(
+                  text = "Earth's hidden oceans may hold more water than all surface lakes combined",
+                  color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                  fontSize = 13.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  maxLines = 2,
+                  overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                  Text(
+                    text = "BBC Science",
+                    color = ThemeCyber.colors.primary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                  )
+                  Text(
+                    text = "• 4h ago",
+                    color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                    fontSize = 11.sp
+                  )
+                }
+              }
+            }
+          }
+
+          // Weather & Privacy Glance Strip
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
+            // Weather Glance
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isLight) Color(0xFFFFFBEB) else Color(0xFF282315),
+              border = BorderStroke(1.dp, if (isLight) Color(0xFFFDE68A) else Color(0xFF45391C)),
+              modifier = Modifier.weight(1f)
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Text(text = "☀️", fontSize = 18.sp)
+                Column {
+                  Text(
+                    text = "32°C",
+                    color = if (isLight) Color(0xFFB45309) else Color(0xFFFBBF24),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold
+                  )
+                  Text(
+                    text = "Sunny • Clear",
+                    color = if (isLight) Color(0xFF92400E) else Color(0xFFD97706),
+                    fontSize = 10.5.sp
+                  )
+                }
+              }
+            }
+
+            // Protection Glance
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isLight) Color(0xFFF0FDF4) else Color(0xFF14291D),
+              border = BorderStroke(1.dp, if (isLight) Color(0xFFBBF7D0) else Color(0xFF1F4D2E)),
+              modifier = Modifier.weight(1f)
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Shield,
+                  contentDescription = null,
+                  tint = Color(0xFF16A34A),
+                  modifier = Modifier.size(18.dp)
+                )
+                Column {
+                  Text(
+                    text = "Zero Trackers",
+                    color = if (isLight) Color(0xFF15803D) else Color(0xFF4ADE80),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold
+                  )
+                  Text(
+                    text = "Encrypted DNS",
+                    color = if (isLight) Color(0xFF166534) else Color(0xFF22C55E),
+                    fontSize = 10.5.sp
+                  )
+                }
               }
             }
           }
@@ -815,709 +1227,837 @@ fun NewTabPage(
     }
   }
 
-  // Wallpaper & Background Animation Customizer Dialog
-  if (showWallpaperDialog) {
-    AlertDialog(
-      onDismissRequest = { showWallpaperDialog = false },
-      title = {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          Icon(Icons.Default.Palette, null, tint = ThemeCyber.colors.primary)
-          Text(
-            "WALLPAPER & ANIMATIONS",
-            color = ThemeCyber.colors.primary,
-            fontFamily = ThemeCyber.fontFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp
-          )
-        }
+  // ==========================================
+  // DIALOGS & OVERLAYS
+  // ==========================================
+
+  // 1. THEME SELECTOR DIALOG
+  if (showThemeDialog) {
+    ThemeSelectorDialog(
+      onDismiss = { showThemeDialog = false },
+      onSelectTheme = { theme ->
+        onSelectTheme(theme)
+        showThemeDialog = false
       },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-          verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          Text(
-            "Live Background Animation",
-            color = ThemeCyber.colors.textMuted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold
-          )
-
-          val animations = listOf(
-            BackgroundTypes.LIGHT_AURA_MESH to "Ambient Aura Waves (Light Mode)",
-            BackgroundTypes.LIGHT_FLOATING_ORBS to "Floating Pastel Orbs (Light Mode)",
-            BackgroundTypes.LIGHT_GEOMETRIC_DOTS to "Minimal Pulsing Dot Grid (Light Mode)",
-            BackgroundTypes.LIGHT_CONSTELLATION to "Connected Nodes Constellation",
-            BackgroundTypes.CYBERPUNK_GRID to "Cyberpunk 3D Grid (Retro)",
-            BackgroundTypes.MATRIX_RAIN to "Matrix Digital Rain",
-            BackgroundTypes.NEON_PARTICLES to "Neon Quantum Particles",
-            BackgroundTypes.DIGITAL_AURORA to "Digital Neon Aurora",
-            BackgroundTypes.MINIMAL_GRADIENT to "Minimal Stealth Gradient",
-          )
-
-          animations.forEach { (type, label) ->
-            val isSelected = backgroundAnimation == type && customWallpaperUri == null
-            Surface(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .clickable {
-                  onUpdateBackgroundAnimation(type)
-                  onUpdateWallpaper(null)
-                  showWallpaperDialog = false
-                },
-              color = if (isSelected) ThemeCyber.colors.primary.copy(alpha = 0.15f) else ThemeCyber.colors.background,
-              border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (isSelected) ThemeCyber.colors.primary else ThemeCyber.colors.surfaceBorder
-              ),
-              shape = RoundedCornerShape(10.dp)
-            ) {
-              Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-              ) {
-                Text(
-                  text = label,
-                  color = if (isSelected) ThemeCyber.colors.primary else ThemeCyber.colors.textPrimary,
-                  fontSize = 13.sp,
-                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                )
-                if (isSelected) {
-                  Icon(Icons.Default.Check, null, tint = ThemeCyber.colors.primary, modifier = Modifier.size(18.dp))
-                }
-              }
-            }
-          }
-
-          Divider(modifier = Modifier.padding(vertical = 6.dp), color = ThemeCyber.colors.surfaceBorder)
-
-          Text(
-            "Custom Wallpaper (Photo)",
-            color = ThemeCyber.colors.textMuted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold
-          )
-
-          // Gallery Pick Button
-          Button(
-            onClick = {
-              photoPickerLauncher.launch("image/*")
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.primary),
-            shape = RoundedCornerShape(10.dp)
-          ) {
-            Icon(Icons.Default.PhotoLibrary, null, tint = if (ThemeCyber.colors.isLight) Color.White else Color.Black, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Choose Photo from Gallery", color = if (ThemeCyber.colors.isLight) Color.White else Color.Black, fontWeight = FontWeight.Bold)
-          }
-
-          if (customWallpaperUri != null) {
-            // Full Visibility & Dimming Controls
-            Surface(
-              modifier = Modifier.fillMaxWidth(),
-              shape = RoundedCornerShape(10.dp),
-              color = ThemeCyber.colors.background,
-              border = androidx.compose.foundation.BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder)
-            ) {
-              Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Text(
-                    "Wallpaper Visibility",
-                    color = ThemeCyber.colors.textPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                  )
-                  val visibilityPercent = ((1f - wallpaperDimLevel) * 100).toInt()
-                  Text(
-                    if (wallpaperDimLevel <= 0.01f) "100% Full Visibility" else "$visibilityPercent% Visible",
-                    color = if (wallpaperDimLevel <= 0.01f) ThemeCyber.colors.neonCyan else ThemeCyber.colors.textSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                  )
-                }
-
-                // Presets: 100% Full Visibility, 75%, 50%, 25%
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                  val presets = listOf(
-                    0.0f to "100% Full",
-                    0.25f to "75%",
-                    0.50f to "50%",
-                    0.75f to "25%"
-                  )
-                  presets.forEach { (dimVal, label) ->
-                    val isPresetSelected = Math.abs(wallpaperDimLevel - dimVal) < 0.05f
-                    Surface(
-                      modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onUpdateWallpaperDimLevel(dimVal) },
-                      shape = RoundedCornerShape(6.dp),
-                      color = if (isPresetSelected) ThemeCyber.colors.primary.copy(alpha = 0.2f) else ThemeCyber.colors.surface,
-                      border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (isPresetSelected) ThemeCyber.colors.primary else ThemeCyber.colors.surfaceBorder
-                      )
-                    ) {
-                      Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                          label,
-                          color = if (isPresetSelected) ThemeCyber.colors.primary else ThemeCyber.colors.textSecondary,
-                          fontSize = 10.sp,
-                          fontWeight = if (isPresetSelected) FontWeight.Bold else FontWeight.Normal
-                        )
-                      }
-                    }
-                  }
-                }
-
-                // Continuous Visibility Slider
-                Slider(
-                  value = 1f - wallpaperDimLevel,
-                  onValueChange = { visibility ->
-                    onUpdateWallpaperDimLevel(1f - visibility)
-                  },
-                  colors = SliderDefaults.colors(
-                    thumbColor = ThemeCyber.colors.primary,
-                    activeTrackColor = ThemeCyber.colors.primary,
-                    inactiveTrackColor = ThemeCyber.colors.surfaceBorder
-                  ),
-                  modifier = Modifier.fillMaxWidth().height(28.dp)
-                )
-              }
-            }
-
-            // Full Screen Edge-to-Edge Switch
-            Surface(
-              modifier = Modifier.fillMaxWidth(),
-              shape = RoundedCornerShape(10.dp),
-              color = ThemeCyber.colors.background,
-              border = androidx.compose.foundation.BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder)
-            ) {
-              Row(
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-              ) {
-                Column(modifier = Modifier.weight(1f)) {
-                  Text(
-                    "Full Screen Background",
-                    color = ThemeCyber.colors.textPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                  )
-                  Text(
-                    "Spans behind top search bar & bottom toolbar",
-                    color = ThemeCyber.colors.textMuted,
-                    fontSize = 10.sp
-                  )
-                }
-                Switch(
-                  checked = fullscreenWallpaperEnabled,
-                  onCheckedChange = { onUpdateFullscreenWallpaper(it) },
-                  colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = ThemeCyber.colors.primary,
-                    uncheckedThumbColor = ThemeCyber.colors.textMuted,
-                    uncheckedTrackColor = ThemeCyber.colors.surface
-                  )
-                )
-              }
-            }
-
-            // Scaling Fit Mode Chips
-            Surface(
-              modifier = Modifier.fillMaxWidth(),
-              shape = RoundedCornerShape(10.dp),
-              color = ThemeCyber.colors.background,
-              border = androidx.compose.foundation.BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder)
-            ) {
-              Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                  "Image Scaling / Fit",
-                  color = ThemeCyber.colors.textPrimary,
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.Bold
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                  listOf(
-                    "CROP" to "Fill (Crop)",
-                    "FIT" to "Fit Image",
-                    "FILL" to "Stretch"
-                  ).forEach { (mode, label) ->
-                    val isSelected = wallpaperScaleMode.equals(mode, ignoreCase = true)
-                    Surface(
-                      modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onUpdateWallpaperScaleMode(mode) },
-                      shape = RoundedCornerShape(6.dp),
-                      color = if (isSelected) ThemeCyber.colors.primary.copy(alpha = 0.2f) else ThemeCyber.colors.surface,
-                      border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (isSelected) ThemeCyber.colors.primary else ThemeCyber.colors.surfaceBorder
-                      )
-                    ) {
-                      Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                          label,
-                          color = if (isSelected) ThemeCyber.colors.primary else ThemeCyber.colors.textSecondary,
-                          fontSize = 10.sp,
-                          fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            OutlinedButton(
-              onClick = {
-                onUpdateWallpaper(null)
-                onUpdateBackgroundAnimation(BackgroundTypes.CYBERPUNK_GRID)
-              },
-              modifier = Modifier.fillMaxWidth(),
-              shape = RoundedCornerShape(10.dp),
-              border = androidx.compose.foundation.BorderStroke(1.dp, ThemeCyber.colors.dangerRed.copy(alpha = 0.6f))
-            ) {
-              Icon(Icons.Default.Delete, null, tint = ThemeCyber.colors.dangerRed, modifier = Modifier.size(16.dp))
-              Spacer(modifier = Modifier.width(6.dp))
-              Text("Remove Custom Wallpaper", color = ThemeCyber.colors.dangerRed, fontSize = 12.sp)
-            }
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = { showWallpaperDialog = false }) {
-          Text("Done", color = ThemeCyber.colors.primary)
-        }
-      },
-      containerColor = ThemeCyber.colors.surface,
+      onOpenWallpaperPicker = {
+        showThemeDialog = false
+        showWallpaperDialog = true
+      }
     )
   }
 
-  // Add Speed Dial Shortcut Dialog
+  // 2. SEARCH ENGINE SELECTOR DIALOG
+  if (showSearchEngineMenu) {
+    SearchEngineSelectorDialog(
+      currentEngine = searchEngine,
+      onDismiss = { showSearchEngineMenu = false },
+      onSelect = { engine ->
+        onSelectSearchEngine(engine)
+        showSearchEngineMenu = false
+      }
+    )
+  }
+
+  // 3. ADD FAVORITE DIALOG
   if (showAddDialog) {
-    AlertDialog(
-      onDismissRequest = { showAddDialog = false },
-      title = {
-        Text("Add Website Shortcut", color = ThemeCyber.colors.textPrimary, fontWeight = FontWeight.Bold)
-      },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-          OutlinedTextField(
-            value = newTitle,
-            onValueChange = { newTitle = it },
-            label = { Text("Name (e.g. YouTube)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-          )
-          OutlinedTextField(
-            value = newUrl,
-            onValueChange = { newUrl = it },
-            label = { Text("URL (e.g. youtube.com)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-          )
-        }
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            if (newUrl.isNotBlank()) {
-              val formattedUrl = if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
-                "https://$newUrl"
-              } else newUrl
-              val title = newTitle.ifBlank { formattedUrl.substringAfter("://").substringBefore("/") }
-              onAddSpeedDial(SpeedDialItem(title = title, url = formattedUrl))
-              showAddDialog = false
-            }
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.primary)
-        ) {
-          Text("Add", color = Color.Black)
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showAddDialog = false }) {
-          Text("Cancel", color = ThemeCyber.colors.textMuted)
-        }
-      },
-      containerColor = ThemeCyber.colors.surface,
+    AddFavoriteDialog(
+      onDismiss = { showAddDialog = false },
+      onAdd = { title, url ->
+        val fixedUrl = if (!url.startsWith("http://") && !url.startsWith("https://")) "https://$url" else url
+        onAddSpeedDial(SpeedDialItem(title = title, url = fixedUrl))
+        showAddDialog = false
+      }
     )
   }
 
-  // Shortcut Options Action Dialog (Open / Edit / Delete)
-  selectedItemForAction?.let { item ->
-    AlertDialog(
-      onDismissRequest = { selectedItemForAction = null },
-      title = {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = ThemeCyber.colors.surfaceLight,
-            modifier = Modifier.size(36.dp)
-          ) {
-            Box(contentAlignment = Alignment.Center) {
-              Text(
-                text = item.title.firstOrNull()?.uppercase() ?: "?",
-                fontWeight = FontWeight.Bold,
-                color = ThemeCyber.colors.primary,
-                fontSize = 16.sp
-              )
-            }
-          }
-          Column {
-            Text(
-              text = item.title,
-              color = ThemeCyber.colors.textPrimary,
-              fontWeight = FontWeight.Bold,
-              fontSize = 16.sp,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis
-            )
-            Text(
-              text = item.url,
-              color = ThemeCyber.colors.textSecondary,
-              fontSize = 11.sp,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis
-            )
-          }
-        }
-      },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-          verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-          // Open
-          Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = ThemeCyber.colors.surfaceLight.copy(alpha = 0.5f),
-            modifier = Modifier
-              .fillMaxWidth()
-              .clip(RoundedCornerShape(10.dp))
-              .clickable {
-                val targetUrl = item.url
-                selectedItemForAction = null
-                onNavigate(targetUrl)
-              }
-          ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-              Icon(Icons.Default.OpenInBrowser, contentDescription = "Open", tint = ThemeCyber.colors.primary, modifier = Modifier.size(20.dp))
-              Text("Open Website", color = ThemeCyber.colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-            }
-          }
-
-          // Edit
-          Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = ThemeCyber.colors.surfaceLight.copy(alpha = 0.5f),
-            modifier = Modifier
-              .fillMaxWidth()
-              .clip(RoundedCornerShape(10.dp))
-              .clickable {
-                editingItem = item
-                selectedItemForAction = null
-              }
-          ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-              Icon(Icons.Default.Edit, contentDescription = "Edit", tint = ThemeCyber.colors.neonCyan, modifier = Modifier.size(20.dp))
-              Text("Edit Shortcut", color = ThemeCyber.colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-            }
-          }
-
-          // Delete
-          Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = ThemeCyber.colors.dangerRed.copy(alpha = 0.12f),
-            modifier = Modifier
-              .fillMaxWidth()
-              .clip(RoundedCornerShape(10.dp))
-              .clickable {
-                itemToDelete = item
-                selectedItemForAction = null
-              }
-          ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-              Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ThemeCyber.colors.dangerRed, modifier = Modifier.size(20.dp))
-              Text("Delete Shortcut", color = ThemeCyber.colors.dangerRed, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-            }
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = { selectedItemForAction = null }) {
-          Text("Cancel", color = ThemeCyber.colors.textMuted)
-        }
-      },
-      containerColor = ThemeCyber.colors.surface,
-    )
-  }
-
-  // Edit Speed Dial Dialog
+  // 4. EDIT FAVORITE DIALOG
   editingItem?.let { item ->
-    var editTitle by remember(item.id) { mutableStateOf(item.title) }
-    var editUrl by remember(item.id) { mutableStateOf(item.url) }
-
-    AlertDialog(
-      onDismissRequest = { editingItem = null },
-      title = {
-        Text("Edit Shortcut", color = ThemeCyber.colors.textPrimary, fontWeight = FontWeight.Bold)
+    EditFavoriteDialog(
+      item = item,
+      onDismiss = { editingItem = null },
+      onSave = { updated ->
+        onEditSpeedDial(updated)
+        editingItem = null
       },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-          OutlinedTextField(
-            value = editTitle,
-            onValueChange = { editTitle = it },
-            label = { Text("Name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-          )
-          OutlinedTextField(
-            value = editUrl,
-            onValueChange = { editUrl = it },
-            label = { Text("URL") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-          )
-        }
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            if (editUrl.isNotBlank()) {
-              val formattedUrl = if (!editUrl.startsWith("http://") && !editUrl.startsWith("https://")) {
-                "https://$editUrl"
-              } else editUrl
-              val title = editTitle.ifBlank { formattedUrl.substringAfter("://").substringBefore("/") }
-              onEditSpeedDial(item.copy(title = title, url = formattedUrl))
-              editingItem = null
-            }
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.primary)
-        ) {
-          Text("Save", color = Color.Black)
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { editingItem = null }) {
-          Text("Cancel", color = ThemeCyber.colors.textMuted)
-        }
-      },
-      containerColor = ThemeCyber.colors.surface,
+      onDelete = {
+        onDeleteSpeedDial(item.id)
+        editingItem = null
+      }
     )
   }
 
-  // Delete Confirmation Dialog
+  // 5. DELETE FAVORITE CONFIRMATION
   itemToDelete?.let { item ->
     AlertDialog(
       onDismissRequest = { itemToDelete = null },
-      title = {
-        Text("Delete Shortcut?", color = ThemeCyber.colors.textPrimary, fontWeight = FontWeight.Bold)
-      },
-      text = {
-        Text(
-          "Are you sure you want to remove \"${item.title}\" from your home screen shortcuts?",
-          color = ThemeCyber.colors.textSecondary,
-          fontSize = 14.sp
-        )
-      },
+      title = { Text("Delete Favorite?", fontWeight = FontWeight.Bold) },
+      text = { Text("Are you sure you want to remove \"${item.title}\" from favorites?") },
       confirmButton = {
-        Button(
+        TextButton(
           onClick = {
             onDeleteSpeedDial(item.id)
             itemToDelete = null
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.dangerRed)
+          }
         ) {
-          Text("Delete", color = Color.White)
+          Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
         }
       },
       dismissButton = {
         TextButton(onClick = { itemToDelete = null }) {
-          Text("Cancel", color = ThemeCyber.colors.textMuted)
+          Text("Cancel")
         }
       },
-      containerColor = ThemeCyber.colors.surface,
+      shape = RoundedCornerShape(16.dp),
+      containerColor = if (isLight) Color.White else Color(0xFF1E293B)
+    )
+  }
+
+  // 6. WALLPAPER & VISIBILITY DIALOG
+  if (showWallpaperDialog) {
+    WallpaperDialog(
+      customWallpaperUri = customWallpaperUri,
+      wallpaperDimLevel = wallpaperDimLevel,
+      wallpaperScaleMode = wallpaperScaleMode,
+      onDismiss = { showWallpaperDialog = false },
+      onPickPhoto = { photoPickerLauncher.launch("image/*") },
+      onClearWallpaper = {
+        onUpdateWallpaper(null)
+        onUpdateBackgroundAnimation(BackgroundTypes.LIGHT_AURA_MESH)
+      },
+      onUpdateDimLevel = onUpdateWallpaperDimLevel,
+      onUpdateScaleMode = onUpdateWallpaperScaleMode
     )
   }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * Quick Action Item Composable inside Quick Actions Card
+ */
 @Composable
-fun SpeedDialIcon(
-  item: SpeedDialItem,
-  hasCustomWallpaper: Boolean = false,
-  onClick: () -> Unit,
-  onLongClick: () -> Unit = {}
+private fun QuickActionItem(
+  icon: ImageVector,
+  label: String,
+  isLight: Boolean,
+  accentColor: Color,
+  onClick: () -> Unit
 ) {
-  val context = LocalContext.current
-  var isImageError by remember(item.url) { mutableStateOf(false) }
-  val faviconUrl = remember(item.url) { getFaviconUrl(item.url) }
-  val isLight = ThemeCyber.colors.isLight
-
-  val textShadow = if (hasCustomWallpaper) {
-    androidx.compose.ui.graphics.Shadow(
-      color = Color.Black.copy(alpha = 0.9f),
-      offset = androidx.compose.ui.geometry.Offset(0f, 2f),
-      blurRadius = 6f
-    )
-  } else null
-
-  val cardBg = if (hasCustomWallpaper) Color.White.copy(alpha = 0.94f) else if (isLight) Color.White else ThemeCyber.colors.surfaceLight
-  val cardBorder = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.surfaceBorder.copy(alpha = if (isLight) 0.8f else 0.5f)
-  val labelColor = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary
-
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     modifier = Modifier
-      .clip(RoundedCornerShape(14.dp))
+      .clip(RoundedCornerShape(12.dp))
+      .clickable(onClick = onClick)
+      .padding(horizontal = 6.dp, vertical = 4.dp)
+  ) {
+    // Icon Container
+    Box(
+      modifier = Modifier
+        .size(44.dp)
+        .clip(CircleShape)
+        .background(
+          if (isLight) accentColor.copy(alpha = 0.12f)
+          else accentColor.copy(alpha = 0.20f)
+        )
+        .border(
+          1.dp,
+          if (isLight) accentColor.copy(alpha = 0.25f)
+          else accentColor.copy(alpha = 0.40f),
+          CircleShape
+        ),
+      contentAlignment = Alignment.Center
+    ) {
+      Icon(
+        imageVector = icon,
+        contentDescription = label,
+        tint = accentColor,
+        modifier = Modifier.size(20.dp)
+      )
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Text(
+      text = label,
+      color = if (isLight) Color(0xFF334155) else Color(0xFFCBD5E1),
+      fontSize = 11.sp,
+      fontWeight = FontWeight.Medium,
+      textAlign = TextAlign.Center,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis
+    )
+  }
+}
+
+/**
+ * Favorite Shortcut Tile
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FavoriteTile(
+  item: SpeedDialItem,
+  isLight: Boolean,
+  isEditMode: Boolean,
+  onClick: () -> Unit,
+  onLongClick: () -> Unit,
+  onDelete: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  val context = LocalContext.current
+  val faviconUrl = remember(item.url) { getFaviconUrl(item.url) }
+  val initialLetter = remember(item.title) {
+    item.title.trim().firstOrNull()?.uppercase() ?: "W"
+  }
+
+  // Consistent background color for domain letter placeholder
+  val tileAccentColor = remember(item.title) {
+    val colors = listOf(
+      Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B),
+      Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFF06B6D4)
+    )
+    val hash = Math.abs(item.title.hashCode())
+    colors[hash % colors.size]
+  }
+
+  Column(
+    horizontalAlignment = Alignment.CenterHorizontally,
+    modifier = modifier
+      .padding(horizontal = 3.dp)
       .combinedClickable(
         onClick = onClick,
         onLongClick = onLongClick
       )
-      .padding(vertical = 4.dp)
   ) {
-    Surface(
-      shape = RoundedCornerShape(16.dp),
-      color = cardBg,
-      shadowElevation = if (isLight) 2.dp else 1.dp,
-      modifier = Modifier
-        .size(56.dp)
-        .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+    Box(
+      modifier = Modifier.size(54.dp),
+      contentAlignment = Alignment.Center
     ) {
-      Box(
-        contentAlignment = Alignment.Center,
+      // Tile Surface Card
+      Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isLight) Color.White else Color(0xFF131B26),
+        border = BorderStroke(
+          1.dp,
+          if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+        ),
+        shadowElevation = if (isLight) 2.dp else 0.dp,
         modifier = Modifier
           .fillMaxSize()
-          .padding(10.dp)
+          .clip(RoundedCornerShape(16.dp))
       ) {
-        if (!isImageError) {
-          AsyncImage(
-            model = ImageRequest.Builder(context)
-              .data(faviconUrl)
-              .crossfade(true)
-              .build(),
-            contentDescription = item.title,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-              .fillMaxSize()
-              .clip(RoundedCornerShape(6.dp)),
-            onError = { isImageError = true },
-          )
-        } else {
-          Text(
-            text = item.title.firstOrNull()?.uppercase() ?: "?",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = ThemeCyber.colors.primary,
+        Box(
+          modifier = Modifier.fillMaxSize(),
+          contentAlignment = Alignment.Center
+        ) {
+          if (faviconUrl.isNotEmpty()) {
+            AsyncImage(
+              model = ImageRequest.Builder(context)
+                .data(faviconUrl)
+                .crossfade(true)
+                .build(),
+              contentDescription = item.title,
+              modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(6.dp)),
+              contentScale = ContentScale.Fit,
+              error = painterResource(id = R.drawable.remmi_logo)
+            )
+          } else {
+            // Letter Placeholder
+            Box(
+              modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(tileAccentColor.copy(alpha = 0.18f)),
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = initialLetter,
+                color = tileAccentColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+              )
+            }
+          }
+        }
+      }
+
+      // Delete Badge in Edit Mode
+      if (isEditMode) {
+        Box(
+          modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 4.dp, y = (-4).dp)
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(Color(0xFFEF4444))
+            .clickable(onClick = onDelete),
+          contentAlignment = Alignment.Center
+        ) {
+          Icon(
+            imageVector = Icons.Default.Close,
+            contentDescription = "Delete",
+            tint = Color.White,
+            modifier = Modifier.size(12.dp)
           )
         }
       }
     }
-    Spacer(modifier = Modifier.height(6.dp))
+
+    Spacer(modifier = Modifier.height(4.dp))
+
     Text(
       text = item.title,
+      color = if (isLight) Color(0xFF334155) else Color(0xFFCBD5E1),
       fontSize = 11.sp,
-      fontWeight = FontWeight.SemiBold,
-      color = labelColor,
+      fontWeight = FontWeight.Medium,
+      textAlign = TextAlign.Center,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
-      textAlign = TextAlign.Center,
-      style = androidx.compose.ui.text.TextStyle(shadow = textShadow),
       modifier = Modifier.fillMaxWidth()
     )
   }
 }
 
+/**
+ * Add Favorite Shortcut Tile
+ */
 @Composable
-fun SpeedDialAddButton(
-  hasCustomWallpaper: Boolean = false,
-  onClick: () -> Unit
+private fun FavoriteAddTile(
+  isLight: Boolean,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier
 ) {
-  val isLight = ThemeCyber.colors.isLight
-
-  val textShadow = if (hasCustomWallpaper) {
-    androidx.compose.ui.graphics.Shadow(
-      color = Color.Black.copy(alpha = 0.9f),
-      offset = androidx.compose.ui.geometry.Offset(0f, 2f),
-      blurRadius = 6f
-    )
-  } else null
-
-  val cardBg = if (hasCustomWallpaper) Color.White.copy(alpha = 0.88f) else if (isLight) Color(0xFFF1F3F4) else ThemeCyber.colors.surfaceLight
-  val cardBorder = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.surfaceBorder.copy(alpha = if (isLight) 0.8f else 0.5f)
-  val iconTint = if (hasCustomWallpaper) Color(0xFF2C2C2E) else ThemeCyber.colors.textPrimary
-  val labelColor = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textSecondary
-
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
-    modifier = Modifier
-      .clip(RoundedCornerShape(14.dp))
+    modifier = modifier
+      .padding(horizontal = 3.dp)
+      .clip(RoundedCornerShape(16.dp))
       .clickable(onClick = onClick)
-      .padding(vertical = 4.dp)
   ) {
     Surface(
       shape = RoundedCornerShape(16.dp),
-      color = cardBg,
-      shadowElevation = if (isLight) 1.dp else 0.dp,
+      color = if (isLight) Color(0xFFF1F5F9) else Color(0xFF1E293B).copy(alpha = 0.5f),
+      border = BorderStroke(
+        1.dp,
+        if (isLight) Color(0xFFCBD5E1) else Color(0xFF334155)
+      ),
       modifier = Modifier
-        .size(56.dp)
-        .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+        .size(54.dp)
+        .clip(RoundedCornerShape(16.dp))
     ) {
       Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
       ) {
         Icon(
-          Icons.Default.Add,
-          contentDescription = "Add shortcut",
-          tint = iconTint,
+          imageVector = Icons.Default.Add,
+          contentDescription = "Add Favorite",
+          tint = ThemeCyber.colors.primary,
           modifier = Modifier.size(24.dp)
         )
       }
     }
-    Spacer(modifier = Modifier.height(6.dp))
+
+    Spacer(modifier = Modifier.height(4.dp))
+
     Text(
       text = "Add",
+      color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
       fontSize = 11.sp,
-      fontWeight = FontWeight.SemiBold,
-      color = labelColor,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
-      textAlign = TextAlign.Center,
-      style = androidx.compose.ui.text.TextStyle(shadow = textShadow),
-      modifier = Modifier.fillMaxWidth()
+      fontWeight = FontWeight.Medium,
+      textAlign = TextAlign.Center
     )
   }
 }
 
+/**
+ * Theme Selector Dialog
+ */
+@Composable
+private fun ThemeSelectorDialog(
+  onDismiss: () -> Unit,
+  onSelectTheme: (CyberTheme) -> Unit,
+  onOpenWallpaperPicker: () -> Unit
+) {
+  val isLight = ThemeCyber.colors.isLight
+  val themes = listOf(
+    CyberTheme.NORMAL_DEFAULT,
+    CyberTheme.MINIMAL_DARK,
+    CyberTheme.JARVIS,
+    CyberTheme.CYBER_MATRIX,
+    CyberTheme.STARK_IND,
+    CyberTheme.VERONICA
+  )
+
+  Dialog(onDismissRequest = onDismiss) {
+    Surface(
+      shape = RoundedCornerShape(20.dp),
+      color = if (isLight) Color.White else Color(0xFF0F172A),
+      border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp)
+    ) {
+      Column(
+        modifier = Modifier.padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "Browser Theme",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+          )
+          IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+            Icon(
+              imageVector = Icons.Default.Close,
+              contentDescription = "Close",
+              tint = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+            )
+          }
+        }
+
+        // Theme grid
+        LazyVerticalGrid(
+          columns = GridCells.Fixed(2),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+          modifier = Modifier.heightIn(max = 280.dp)
+        ) {
+          items(themes) { theme ->
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (theme.isLight) Color(0xFFF8FAFC) else Color(0xFF1E293B),
+              border = BorderStroke(1.5.dp, theme.primaryAccent),
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onSelectTheme(theme) }
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxSize()
+                  .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(theme.primaryAccent)
+                )
+                Column {
+                  Text(
+                    text = theme.displayName,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (theme.isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                    maxLines = 1
+                  )
+                  Text(
+                    text = if (theme.isLight) "Light" else "Dark",
+                    fontSize = 10.sp,
+                    color = if (theme.isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+                  )
+                }
+              }
+            }
+          }
+        }
+
+        // Custom Wallpaper Button
+        OutlinedButton(
+          onClick = onOpenWallpaperPicker,
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth(),
+          border = BorderStroke(1.dp, ThemeCyber.colors.primary)
+        ) {
+          Icon(
+            imageVector = Icons.Default.PhotoLibrary,
+            contentDescription = null,
+            tint = ThemeCyber.colors.primary,
+            modifier = Modifier.size(16.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Wallpaper & Visibility", color = ThemeCyber.colors.primary, fontWeight = FontWeight.Bold)
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Search Engine Selector Dialog
+ */
+@Composable
+private fun SearchEngineSelectorDialog(
+  currentEngine: SearchEngine,
+  onDismiss: () -> Unit,
+  onSelect: (SearchEngine) -> Unit
+) {
+  val isLight = ThemeCyber.colors.isLight
+  val engines = SearchEngine.entries
+
+  Dialog(onDismissRequest = onDismiss) {
+    Surface(
+      shape = RoundedCornerShape(20.dp),
+      color = if (isLight) Color.White else Color(0xFF0F172A),
+      border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp)
+    ) {
+      Column(
+        modifier = Modifier.padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+      ) {
+        Text(
+          text = "Select Search Engine",
+          fontWeight = FontWeight.Bold,
+          fontSize = 17.sp,
+          color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+        )
+
+        engines.forEach { engine ->
+          val isSelected = engine == currentEngine
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (isSelected) ThemeCyber.colors.primary.copy(alpha = 0.15f)
+            else if (isLight) Color(0xFFF8FAFC) else Color(0xFF1E293B),
+            border = BorderStroke(
+              1.dp,
+              if (isSelected) ThemeCyber.colors.primary else Color.Transparent
+            ),
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .clickable { onSelect(engine) }
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+              Column {
+                Text(
+                  text = engine.displayName,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 14.sp,
+                  color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                )
+                Text(
+                  text = engine.subtitle,
+                  fontSize = 11.sp,
+                  color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+                )
+              }
+              if (isSelected) {
+                Icon(
+                  imageVector = Icons.Default.CheckCircle,
+                  contentDescription = "Selected",
+                  tint = ThemeCyber.colors.primary,
+                  modifier = Modifier.size(20.dp)
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Add Favorite Dialog
+ */
+@Composable
+private fun AddFavoriteDialog(
+  onDismiss: () -> Unit,
+  onAdd: (title: String, url: String) -> Unit
+) {
+  val isLight = ThemeCyber.colors.isLight
+  var title by remember { mutableStateOf("") }
+  var url by remember { mutableStateOf("") }
+
+  Dialog(onDismissRequest = onDismiss) {
+    Surface(
+      shape = RoundedCornerShape(20.dp),
+      color = if (isLight) Color.White else Color(0xFF0F172A),
+      border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp)
+    ) {
+      Column(
+        modifier = Modifier.padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+      ) {
+        Text(
+          text = "Add to Favorites",
+          fontWeight = FontWeight.Bold,
+          fontSize = 18.sp,
+          color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+        )
+
+        OutlinedTextField(
+          value = title,
+          onValueChange = { title = it },
+          label = { Text("Title") },
+          placeholder = { Text("e.g. GitHub") },
+          singleLine = true,
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+          value = url,
+          onValueChange = { url = it },
+          label = { Text("URL / Web Address") },
+          placeholder = { Text("e.g. github.com") },
+          singleLine = true,
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.End,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          TextButton(onClick = onDismiss) {
+            Text("Cancel")
+          }
+          Spacer(modifier = Modifier.width(8.dp))
+          Button(
+            onClick = {
+              if (url.isNotBlank()) {
+                val resolvedTitle = if (title.isBlank()) url.replace("https://", "").replace("http://", "").substringBefore("/") else title
+                onAdd(resolvedTitle, url)
+              }
+            },
+            enabled = url.isNotBlank(),
+            shape = RoundedCornerShape(10.dp)
+          ) {
+            Text("Add Favorite")
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Edit Favorite Dialog
+ */
+@Composable
+private fun EditFavoriteDialog(
+  item: SpeedDialItem,
+  onDismiss: () -> Unit,
+  onSave: (SpeedDialItem) -> Unit,
+  onDelete: () -> Unit
+) {
+  val isLight = ThemeCyber.colors.isLight
+  var title by remember { mutableStateOf(item.title) }
+  var url by remember { mutableStateOf(item.url) }
+
+  Dialog(onDismissRequest = onDismiss) {
+    Surface(
+      shape = RoundedCornerShape(20.dp),
+      color = if (isLight) Color.White else Color(0xFF0F172A),
+      border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp)
+    ) {
+      Column(
+        modifier = Modifier.padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "Edit Favorite",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+          )
+          IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+            Icon(
+              imageVector = Icons.Default.Delete,
+              contentDescription = "Delete",
+              tint = Color(0xFFEF4444)
+            )
+          }
+        }
+
+        OutlinedTextField(
+          value = title,
+          onValueChange = { title = it },
+          label = { Text("Title") },
+          singleLine = true,
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+          value = url,
+          onValueChange = { url = it },
+          label = { Text("URL / Web Address") },
+          singleLine = true,
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.End,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          TextButton(onClick = onDismiss) {
+            Text("Cancel")
+          }
+          Spacer(modifier = Modifier.width(8.dp))
+          Button(
+            onClick = {
+              if (url.isNotBlank()) {
+                onSave(item.copy(title = title, url = url))
+              }
+            },
+            enabled = url.isNotBlank(),
+            shape = RoundedCornerShape(10.dp)
+          ) {
+            Text("Save")
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Wallpaper & Clarity Dialog
+ */
+@Composable
+private fun WallpaperDialog(
+  customWallpaperUri: String?,
+  wallpaperDimLevel: Float,
+  wallpaperScaleMode: String,
+  onDismiss: () -> Unit,
+  onPickPhoto: () -> Unit,
+  onClearWallpaper: () -> Unit,
+  onUpdateDimLevel: (Float) -> Unit,
+  onUpdateScaleMode: (String) -> Unit
+) {
+  val isLight = ThemeCyber.colors.isLight
+
+  Dialog(onDismissRequest = onDismiss) {
+    Surface(
+      shape = RoundedCornerShape(20.dp),
+      color = if (isLight) Color.White else Color(0xFF0F172A),
+      border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp)
+    ) {
+      Column(
+        modifier = Modifier.padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "Wallpaper Settings",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+          )
+          IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+            Icon(
+              imageVector = Icons.Default.Close,
+              contentDescription = "Close",
+              tint = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+            )
+          }
+        }
+
+        // Pick Photo
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Button(
+            onClick = onPickPhoto,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.weight(1f)
+          ) {
+            Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Choose Image")
+          }
+
+          if (customWallpaperUri != null) {
+            OutlinedButton(
+              onClick = onClearWallpaper,
+              shape = RoundedCornerShape(10.dp)
+            ) {
+              Text("Reset")
+            }
+          }
+        }
+
+        // Visibility Slider
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          val visibilityPercent = ((1f - wallpaperDimLevel) * 100).toInt()
+          Text(
+            text = "Clarity: $visibilityPercent%",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+          )
+          Slider(
+            value = 1f - wallpaperDimLevel,
+            onValueChange = { onUpdateDimLevel(1f - it) },
+            colors = SliderDefaults.colors(
+              thumbColor = ThemeCyber.colors.primary,
+              activeTrackColor = ThemeCyber.colors.primary
+            )
+          )
+        }
+
+        // Scale Mode Chips
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Text(
+            text = "Scaling Mode",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+          )
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("CROP" to "Fill Crop", "FIT" to "Fit", "FILL" to "Stretch").forEach { (mode, label) ->
+              val isSelected = wallpaperScaleMode.equals(mode, ignoreCase = true)
+              FilterChip(
+                selected = isSelected,
+                onClick = { onUpdateScaleMode(mode) },
+                label = { Text(label, fontSize = 11.5.sp) }
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
