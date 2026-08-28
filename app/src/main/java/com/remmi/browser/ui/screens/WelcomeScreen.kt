@@ -93,11 +93,10 @@ fun WelcomeScreen(
           modifier = Modifier.padding(bottom = 12.dp)
         ) {
           Image(
-            painter = painterResource(id = R.drawable.remmi_logo),
+            painter = painterResource(id = R.drawable.ic_remmi_panda),
             contentDescription = "Remmi Browser Logo",
             modifier = Modifier
               .size(36.dp)
-              .clip(RoundedCornerShape(8.dp))
           )
           Spacer(modifier = Modifier.width(12.dp))
           Column {

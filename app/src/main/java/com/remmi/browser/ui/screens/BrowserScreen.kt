@@ -1726,9 +1726,27 @@ fun BrowserScreen(
         onTogglePinTab = { tabId ->
           tabManager.togglePinTab(tabId)
         },
+        onToggleLockTab = { tabId ->
+          tabManager.toggleLockTab(tabId)
+        },
+        onCloseMultipleTabs = { tabIds ->
+          tabManager.closeMultipleTabs(tabIds)
+        },
+        onLockMultipleTabs = { tabIds, lock ->
+          tabManager.lockTabs(tabIds, lock)
+        },
+        onSetMultipleTabsInactive = { tabIds, inactive ->
+          tabManager.setTabsInactive(tabIds, inactive)
+        },
+        onMoveMultipleTabsToGroup = { tabIds, groupId ->
+          tabManager.moveTabsToGroup(tabIds, groupId)
+        },
         onCloseAllTabs = {
           tabManager.closeAllTabs(settings.defaultProfile)
           showTabGridSheet = false
+        },
+        onOpenSettings = {
+          onOpenSettings()
         },
         onDismiss = { showTabGridSheet = false },
       )

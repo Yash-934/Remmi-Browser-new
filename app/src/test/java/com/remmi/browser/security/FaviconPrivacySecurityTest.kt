@@ -1,7 +1,6 @@
 package com.remmi.browser.security
 
 import com.remmi.browser.ui.components.getFaviconUrl
-import com.remmi.browser.ui.components.getWebsiteFaviconUrl
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -20,15 +19,11 @@ class FaviconPrivacySecurityTest {
 
     for (url in testUrls) {
       val res1 = getFaviconUrl(url)
-      val res2 = getWebsiteFaviconUrl(url)
 
       assertFalse("Must never query Google Favicon Service", res1.contains("google.com/s2/favicons"))
-      assertFalse("Must never query Google Favicon Service", res2.contains("google.com/s2/favicons"))
       assertFalse("Must never query DuckDuckGo favicon service", res1.contains("icons.duckduckgo.com"))
-      assertFalse("Must never query DuckDuckGo favicon service", res2.contains("icons.duckduckgo.com"))
 
       assertEquals("", res1)
-      assertEquals("", res2)
     }
   }
 

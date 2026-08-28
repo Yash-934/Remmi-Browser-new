@@ -125,7 +125,7 @@ data class MasterKeyMetadataEntity(
 
 @Dao
 interface HistoryDao {
-  @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT 200")
+  @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT 500")
   fun getAllHistory(): Flow<List<HistoryItem>>
 
   @Query("SELECT * FROM history WHERE (:query = '' OR title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%') AND timestamp >= :minTimestamp AND timestamp <= :maxTimestamp ORDER BY timestamp DESC")
@@ -143,11 +143,17 @@ interface HistoryDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insert(item: HistoryItem)
 
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertAll(items: List<HistoryItem>)
+
   @Query("DELETE FROM history")
   suspend fun clearHistory()
 
   @Delete
   suspend fun delete(item: HistoryItem)
+
+  @Delete
+  suspend fun deleteAll(items: List<HistoryItem>)
 }
 
 @Dao
@@ -158,11 +164,20 @@ interface BookmarkDao {
   @Query("SELECT * FROM bookmarks WHERE category = :folder ORDER BY timestamp DESC")
   fun getBookmarksByCategory(folder: String): Flow<List<BookmarkItem>>
 
-  @Query("SELECT * FROM bookmarks WHERE url LIKE '%' || :query || '%' OR title LIKE '%' || :query || '%' ORDER BY timestamp DESC LIMIT 10")
+  @Query("SELECT DISTINCT category FROM bookmarks")
+  fun getAllCategories(): Flow<List<String>>
+
+  @Query("SELECT * FROM bookmarks WHERE url LIKE '%' || :query || '%' OR title LIKE '%' || :query || '%' ORDER BY timestamp DESC LIMIT 50")
   suspend fun searchBookmarks(query: String): List<BookmarkItem>
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insert(item: BookmarkItem)
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertAll(items: List<BookmarkItem>)
+
+  @Update
+  suspend fun update(item: BookmarkItem)
 
   @Query("DELETE FROM bookmarks WHERE url = :url")
   suspend fun deleteByUrl(url: String)
@@ -175,6 +190,9 @@ interface BookmarkDao {
 
   @Delete
   suspend fun delete(item: BookmarkItem)
+
+  @Delete
+  suspend fun deleteAll(items: List<BookmarkItem>)
 }
 
 @Dao
@@ -393,64 +411,94 @@ abstract class NetRunnerDatabase : RoomDatabase() {
     @androidx.annotation.VisibleForTesting
     var testPassphraseProvider: (() -> ByteArray)? = null
 
+    private fun generateMasterKey(keyStore: KeyStore) {
+      val keyGenerator = KeyGenerator.getInstance(
+        KeyProperties.KEY_ALGORITHM_AES,
+        ANDROID_KEYSTORE
+      )
+      val spec = KeyGenParameterSpec.Builder(
+        KEY_ALIAS,
+        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+      )
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setKeySize(256)
+        .build()
+      keyGenerator.init(spec)
+      keyGenerator.generateKey()
+    }
+
+    private fun generateAndStoreNewPassphrase(prefs: android.content.SharedPreferences, secretKey: SecretKey): ByteArray {
+      val rawPassphrase = ByteArray(32)
+      SecureRandom().nextBytes(rawPassphrase)
+
+      val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+      cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+      val iv = cipher.iv
+      val encryptedData = cipher.doFinal(rawPassphrase)
+
+      prefs.edit()
+        .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(encryptedData, Base64.NO_WRAP))
+        .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
+        .apply()
+
+      return rawPassphrase
+    }
+
     private fun getOrCreatePassphrase(context: Context): ByteArray {
       testPassphraseProvider?.let { provider ->
         return provider()
       }
 
+      val keyStore = try {
+        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+      } catch (e: Throwable) {
+        throw SecurityException("Android Keystore is unavailable: ${e.message}", e)
+      }
+
       try {
-        val keyStore = try {
-          KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        } catch (e: Throwable) {
-          throw SecurityException("Android Keystore is unavailable: ${e.message}", e)
-        }
-
         if (!keyStore.containsAlias(KEY_ALIAS)) {
-          val keyGenerator = KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES,
-            ANDROID_KEYSTORE
-          )
-          val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-          )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
-          keyGenerator.init(spec)
-          keyGenerator.generateKey()
+          generateMasterKey(keyStore)
         }
 
-        val secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-          ?: throw SecurityException("Failed to retrieve master secret key from Android Keystore")
+        var secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+        if (secretKey == null) {
+          try { keyStore.deleteEntry(KEY_ALIAS) } catch (_: Throwable) {}
+          generateMasterKey(keyStore)
+          secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+            ?: throw SecurityException("Failed to retrieve master secret key from Android Keystore")
+        }
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val encryptedPassphraseB64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
         val ivB64 = prefs.getString(KEY_IV, null)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 
         if (encryptedPassphraseB64 != null && ivB64 != null) {
-          val iv = Base64.decode(ivB64, Base64.NO_WRAP)
-          val encryptedData = Base64.decode(encryptedPassphraseB64, Base64.NO_WRAP)
-          val gcmSpec = GCMParameterSpec(128, iv)
-          cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-          return cipher.doFinal(encryptedData)
+          try {
+            val iv = Base64.decode(ivB64, Base64.NO_WRAP)
+            val encryptedData = Base64.decode(encryptedPassphraseB64, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val gcmSpec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+            return cipher.doFinal(encryptedData)
+          } catch (decryptionEx: Throwable) {
+            android.util.Log.w(
+              "NetRunnerDatabase",
+              "Passphrase decryption failed (${decryptionEx.message}). Regenerating master key after invalidation...",
+              decryptionEx
+            )
+            // Keystore key was invalidated across OS update (Android 16/Vivo) or backup/restore
+            try { keyStore.deleteEntry(KEY_ALIAS) } catch (_: Throwable) {}
+            generateMasterKey(keyStore)
+            val regeneratedKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+              ?: throw SecurityException("Failed to regenerate master secret key", decryptionEx)
+            return generateAndStoreNewPassphrase(prefs, regeneratedKey)
+          }
         } else {
-          val rawPassphrase = ByteArray(32)
-          SecureRandom().nextBytes(rawPassphrase)
-
-          cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-          val iv = cipher.iv
-          val encryptedData = cipher.doFinal(rawPassphrase)
-
-          prefs.edit()
-            .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(encryptedData, Base64.NO_WRAP))
-            .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
-            .apply()
-
-          return rawPassphrase
+          return generateAndStoreNewPassphrase(prefs, secretKey)
         }
+      } catch (e: SecurityException) {
+        throw e
       } catch (e: Exception) {
         throw SecurityException("Database master encryption key derivation failed: ${e.message}", e)
       }
@@ -482,6 +530,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
             "netrunner_vault.db"
           )
             .openHelperFactory(supportFactory)
+            .fallbackToDestructiveMigration()
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
           INSTANCE = instance

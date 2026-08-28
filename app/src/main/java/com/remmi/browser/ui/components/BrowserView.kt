@@ -97,6 +97,10 @@ fun BrowserView(
           progressFloat = 0.1f
         } else {
           progressFloat = 0f
+          // Page load completed, capture preview thumbnail safely
+          geckoViewRef?.let { gv ->
+            com.remmi.browser.engine.TabThumbnailManager.getInstance(context).captureGeckoView(tab.id, gv)
+          }
         }
       }
 
@@ -314,6 +318,7 @@ fun BrowserView(
           }
         },
         onRelease = { geckoView ->
+          com.remmi.browser.engine.TabThumbnailManager.getInstance(context).captureGeckoView(tab.id, geckoView)
           geckoViewRef = null
           geckoView.tag = null
           scope.launch {

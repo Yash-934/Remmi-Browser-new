@@ -3,6 +3,6 @@
     <item
         android:width="72dp"
         android:height="72dp"
-        android:drawable="@drawable/remmi_logo"
+        android:drawable="@drawable/ic_remmi_panda"
         android:gravity="center" />
 </layer-list>

@@ -33,4 +33,5 @@ data class BrowserTab(
   val groupId: String? = null,
   val isInactive: Boolean = false,
   val isPinned: Boolean = false,
+  val isLocked: Boolean = false,
 )

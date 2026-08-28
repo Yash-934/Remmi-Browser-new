@@ -194,6 +194,37 @@ class TabManager {
     updateTab(tabId) { it.copy(isPinned = !it.isPinned) }
   }
 
+  fun toggleLockTab(tabId: String) {
+    updateTab(tabId) { it.copy(isLocked = !it.isLocked) }
+  }
+
+  fun lockTabs(tabIds: List<String>, lock: Boolean) {
+    _tabs.value = _tabs.value.map { tab ->
+      if (tabIds.contains(tab.id)) tab.copy(isLocked = lock) else tab
+    }
+  }
+
+  fun setTabsInactive(tabIds: List<String>, inactive: Boolean) {
+    _tabs.value = _tabs.value.map { tab ->
+      if (tabIds.contains(tab.id)) tab.copy(isInactive = inactive) else tab
+    }
+  }
+
+  fun moveTabsToGroup(tabIds: List<String>, groupId: String?) {
+    _tabs.value = _tabs.value.map { tab ->
+      if (tabIds.contains(tab.id)) tab.copy(groupId = groupId) else tab
+    }
+  }
+
+  fun closeMultipleTabs(tabIds: List<String>, forceLocked: Boolean = false) {
+    tabIds.forEach { id ->
+      val tab = _tabs.value.find { it.id == id }
+      if (tab != null && (!tab.isLocked || forceLocked)) {
+        closeTab(id)
+      }
+    }
+  }
+
   // --- TAB GROUP MANAGEMENT ---
 
   fun createGroup(title: String, colorHex: Long, initialTabIds: List<String> = emptyList()): TabGroup {

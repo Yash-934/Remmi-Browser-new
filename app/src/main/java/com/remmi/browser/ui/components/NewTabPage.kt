@@ -82,13 +82,7 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 fun getFaviconUrl(url: String): String {
-  return try {
-    val uri = Uri.parse(url)
-    val host = uri.host ?: return ""
-    "https://www.google.com/s2/favicons?domain=${host}&sz=128"
-  } catch (e: Exception) {
-    ""
-  }
+  return ""
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -458,11 +452,10 @@ fun NewTabPage(
             contentAlignment = Alignment.Center
           ) {
             Image(
-              painter = painterResource(id = R.drawable.remmi_logo),
+              painter = painterResource(id = R.drawable.ic_remmi_panda),
               contentDescription = "REMMI Browser Logo",
               modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp)),
+                .size(42.dp),
               contentScale = ContentScale.Fit
             )
           }
@@ -1231,18 +1224,32 @@ fun NewTabPage(
   // DIALOGS & OVERLAYS
   // ==========================================
 
-  // 1. THEME SELECTOR DIALOG
+  // 1. THEME & LIVE ANIMATION SELECTOR DIALOG
   if (showThemeDialog) {
     ThemeSelectorDialog(
+      currentAnimation = backgroundAnimation,
+      customWallpaperUri = customWallpaperUri,
+      wallpaperDimLevel = wallpaperDimLevel,
+      wallpaperScaleMode = wallpaperScaleMode,
       onDismiss = { showThemeDialog = false },
       onSelectTheme = { theme ->
         onSelectTheme(theme)
-        showThemeDialog = false
       },
-      onOpenWallpaperPicker = {
-        showThemeDialog = false
-        showWallpaperDialog = true
-      }
+      onSelectAnimation = { anim ->
+        if (customWallpaperUri != null) {
+          onUpdateWallpaper(null)
+        }
+        onUpdateBackgroundAnimation(anim)
+      },
+      onPickPhoto = {
+        photoPickerLauncher.launch("image/*")
+      },
+      onClearWallpaper = {
+        onUpdateWallpaper(null)
+        onUpdateBackgroundAnimation(BackgroundTypes.LIGHT_AURA_MESH)
+      },
+      onUpdateDimLevel = onUpdateWallpaperDimLevel,
+      onUpdateScaleMode = onUpdateWallpaperScaleMode
     )
   }
 
@@ -1570,15 +1577,26 @@ private fun FavoriteAddTile(
 }
 
 /**
- * Theme Selector Dialog
+ * Theme & Live Background Animation Selector Dialog
  */
 @Composable
 private fun ThemeSelectorDialog(
+  currentAnimation: String,
+  customWallpaperUri: String?,
+  wallpaperDimLevel: Float,
+  wallpaperScaleMode: String,
   onDismiss: () -> Unit,
   onSelectTheme: (CyberTheme) -> Unit,
-  onOpenWallpaperPicker: () -> Unit
+  onSelectAnimation: (String) -> Unit,
+  onPickPhoto: () -> Unit,
+  onClearWallpaper: () -> Unit,
+  onUpdateDimLevel: (Float) -> Unit,
+  onUpdateScaleMode: (String) -> Unit
 ) {
   val isLight = ThemeCyber.colors.isLight
+  val accentColor = ThemeCyber.colors.primary
+  var selectedTab by remember { mutableIntStateOf(0) } // 0: Live Animations, 1: Themes, 2: Wallpaper
+
   val themes = listOf(
     CyberTheme.NORMAL_DEFAULT,
     CyberTheme.MINIMAL_DARK,
@@ -1588,30 +1606,53 @@ private fun ThemeSelectorDialog(
     CyberTheme.VERONICA
   )
 
+  val animOptions = listOf(
+    Triple(BackgroundTypes.LIGHT_AURA_MESH, "Soft Aura Waves", "Ambient fluid mesh gradient"),
+    Triple(BackgroundTypes.LIGHT_FLOATING_ORBS, "Floating Pastel Orbs", "Soft floating glowing spheres"),
+    Triple(BackgroundTypes.LIGHT_GEOMETRIC_DOTS, "Pulsing Dot Grid", "Clean geometric pulsing grid"),
+    Triple(BackgroundTypes.LIGHT_CONSTELLATION, "Starry Constellation", "Interactive connected nodes"),
+    Triple(BackgroundTypes.CYBERPUNK_GRID, "3D Cyberpunk Grid", "Retro neon horizon wireframe"),
+    Triple(BackgroundTypes.MATRIX_RAIN, "Matrix Digital Rain", "Cyberpunk falling glyph streams"),
+    Triple(BackgroundTypes.NEON_PARTICLES, "Quantum Particles", "High-energy glowing dust"),
+    Triple(BackgroundTypes.DIGITAL_AURORA, "Digital Neon Aurora", "Luminous flowing ribbons"),
+    Triple(BackgroundTypes.MINIMAL_GRADIENT, "Minimal Stealth Gradient", "Clean distraction-free canvas")
+  )
+
   Dialog(onDismissRequest = onDismiss) {
     Surface(
-      shape = RoundedCornerShape(20.dp),
+      shape = RoundedCornerShape(22.dp),
       color = if (isLight) Color.White else Color(0xFF0F172A),
       border = BorderStroke(1.dp, if (isLight) Color(0xFFE2E8F0) else Color(0xFF1E293B)),
       modifier = Modifier
         .fillMaxWidth()
-        .padding(16.dp)
+        .padding(horizontal = 4.dp, vertical = 16.dp)
     ) {
       Column(
-        modifier = Modifier.padding(18.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
       ) {
+        // Header
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = "Browser Theme",
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
-          )
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+              imageVector = Icons.Default.Palette,
+              contentDescription = null,
+              tint = accentColor,
+              modifier = Modifier.size(22.dp)
+            )
+            Text(
+              text = "Theme & Appearance",
+              fontWeight = FontWeight.Bold,
+              fontSize = 17.sp,
+              color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+            )
+          }
           IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
             Icon(
               imageVector = Icons.Default.Close,
@@ -1621,49 +1662,45 @@ private fun ThemeSelectorDialog(
           }
         }
 
-        // Theme grid
-        LazyVerticalGrid(
-          columns = GridCells.Fixed(2),
-          horizontalArrangement = Arrangement.spacedBy(10.dp),
-          verticalArrangement = Arrangement.spacedBy(10.dp),
-          modifier = Modifier.heightIn(max = 280.dp)
+        // Segmented Tabs: Live Animations | Themes | Wallpaper
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = if (isLight) Color(0xFFF1F5F9) else Color(0xFF1E293B),
+          modifier = Modifier.fillMaxWidth()
         ) {
-          items(themes) { theme ->
-            Surface(
-              shape = RoundedCornerShape(12.dp),
-              color = if (theme.isLight) Color(0xFFF8FAFC) else Color(0xFF1E293B),
-              border = BorderStroke(1.5.dp, theme.primaryAccent),
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { onSelectTheme(theme) }
-            ) {
-              Row(
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(3.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            val tabs = listOf("✨ Live Motion", "🎨 Colors", "🖼️ Wallpaper")
+            tabs.forEachIndexed { index, title ->
+              val isSelected = selectedTab == index
+              Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = if (isSelected) {
+                  if (isLight) Color.White else Color(0xFF334155)
+                } else Color.Transparent,
+                shadowElevation = if (isSelected && isLight) 1.dp else 0.dp,
                 modifier = Modifier
-                  .fillMaxSize()
-                  .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                  .weight(1f)
+                  .clip(RoundedCornerShape(9.dp))
+                  .clickable { selectedTab = index }
               ) {
                 Box(
-                  modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(theme.primaryAccent)
-                )
-                Column {
+                  modifier = Modifier.padding(vertical = 8.dp),
+                  contentAlignment = Alignment.Center
+                ) {
                   Text(
-                    text = theme.displayName,
+                    text = title,
                     fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (theme.isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
-                    maxLines = 1
-                  )
-                  Text(
-                    text = if (theme.isLight) "Light" else "Dark",
-                    fontSize = 10.sp,
-                    color = if (theme.isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) {
+                      accentColor
+                    } else {
+                      if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+                    }
                   )
                 }
               }
@@ -1671,21 +1708,252 @@ private fun ThemeSelectorDialog(
           }
         }
 
-        // Custom Wallpaper Button
-        OutlinedButton(
-          onClick = onOpenWallpaperPicker,
-          shape = RoundedCornerShape(10.dp),
-          modifier = Modifier.fillMaxWidth(),
-          border = BorderStroke(1.dp, ThemeCyber.colors.primary)
-        ) {
-          Icon(
-            imageVector = Icons.Default.PhotoLibrary,
-            contentDescription = null,
-            tint = ThemeCyber.colors.primary,
-            modifier = Modifier.size(16.dp)
-          )
-          Spacer(modifier = Modifier.width(8.dp))
-          Text("Wallpaper & Visibility", color = ThemeCyber.colors.primary, fontWeight = FontWeight.Bold)
+        // Tab Content
+        when (selectedTab) {
+          // 0: Live Animations
+          0 -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text(
+                text = "Choose Live Background Animation:",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isLight) Color(0xFF475569) else Color(0xFF94A3B8)
+              )
+
+              LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.heightIn(max = 280.dp)
+              ) {
+                items(animOptions) { (type, name, desc) ->
+                  val isSelected = customWallpaperUri == null && currentAnimation == type
+                  Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) accentColor.copy(alpha = if (isLight) 0.12f else 0.20f)
+                            else if (isLight) Color(0xFFF8FAFC) else Color(0xFF1E293B),
+                    border = BorderStroke(
+                      width = if (isSelected) 1.8.dp else 1.dp,
+                      color = if (isSelected) accentColor else if (isLight) Color(0xFFE2E8F0) else Color(0xFF334155)
+                    ),
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .clip(RoundedCornerShape(12.dp))
+                      .clickable { onSelectAnimation(type) }
+                  ) {
+                    Row(
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                      Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                      ) {
+                        Box(
+                          modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(
+                              if (isSelected) accentColor.copy(alpha = 0.25f)
+                              else if (isLight) Color(0xFFE2E8F0) else Color(0xFF334155)
+                            ),
+                          contentAlignment = Alignment.Center
+                        ) {
+                          Icon(
+                            imageVector = when (type) {
+                              BackgroundTypes.MATRIX_RAIN -> Icons.Default.Terminal
+                              BackgroundTypes.CYBERPUNK_GRID -> Icons.Default.GridOn
+                              BackgroundTypes.NEON_PARTICLES -> Icons.Default.BlurOn
+                              BackgroundTypes.DIGITAL_AURORA -> Icons.Default.Waves
+                              BackgroundTypes.LIGHT_FLOATING_ORBS -> Icons.Default.BubbleChart
+                              BackgroundTypes.LIGHT_CONSTELLATION -> Icons.Default.Hub
+                              BackgroundTypes.LIGHT_GEOMETRIC_DOTS -> Icons.Default.Grain
+                              BackgroundTypes.MINIMAL_GRADIENT -> Icons.Default.Contrast
+                              else -> Icons.Default.AutoAwesome
+                            },
+                            contentDescription = null,
+                            tint = if (isSelected) accentColor else if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                            modifier = Modifier.size(18.dp)
+                          )
+                        }
+
+                        Column {
+                          Text(
+                            text = name,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                          )
+                          Text(
+                            text = desc,
+                            fontSize = 10.5.sp,
+                            color = if (isLight) Color(0xFF64748B) else Color(0xFF94A3B8),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                          )
+                        }
+                      }
+
+                      if (isSelected) {
+                        Box(
+                          modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                          contentAlignment = Alignment.Center
+                        ) {
+                          Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // 1: Themes
+          1 -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text(
+                text = "Preset Color Schemes:",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isLight) Color(0xFF475569) else Color(0xFF94A3B8)
+              )
+
+              LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.heightIn(max = 280.dp)
+              ) {
+                items(themes) { theme ->
+                  Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (theme.isLight) Color(0xFFF8FAFC) else Color(0xFF1E293B),
+                    border = BorderStroke(1.5.dp, theme.primaryAccent),
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .height(60.dp)
+                      .clip(RoundedCornerShape(12.dp))
+                      .clickable { onSelectTheme(theme) }
+                  ) {
+                    Row(
+                      modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                      Box(
+                        modifier = Modifier
+                          .size(20.dp)
+                          .clip(CircleShape)
+                          .background(theme.primaryAccent)
+                      )
+                      Column {
+                        Text(
+                          text = theme.displayName,
+                          fontSize = 11.5.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = if (theme.isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                          maxLines = 1
+                        )
+                        Text(
+                          text = if (theme.isLight) "Light Mode" else "Dark Mode",
+                          fontSize = 10.sp,
+                          color = if (theme.isLight) Color(0xFF64748B) else Color(0xFF94A3B8)
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // 2: Custom Wallpaper
+          2 -> {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              Text(
+                text = "Custom Gallery Photo:",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isLight) Color(0xFF475569) else Color(0xFF94A3B8)
+              )
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Button(
+                  onClick = onPickPhoto,
+                  shape = RoundedCornerShape(10.dp),
+                  modifier = Modifier.weight(1f)
+                ) {
+                  Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(16.dp))
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text("Choose Photo")
+                }
+
+                if (customWallpaperUri != null) {
+                  OutlinedButton(
+                    onClick = onClearWallpaper,
+                    shape = RoundedCornerShape(10.dp)
+                  ) {
+                    Text("Reset")
+                  }
+                }
+              }
+
+              // Visibility Slider
+              Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val visibilityPercent = ((1f - wallpaperDimLevel) * 100).toInt()
+                Text(
+                  text = "Wallpaper Clarity: $visibilityPercent%",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Medium,
+                  color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                )
+                Slider(
+                  value = 1f - wallpaperDimLevel,
+                  onValueChange = { onUpdateDimLevel(1f - it) },
+                  colors = SliderDefaults.colors(
+                    thumbColor = accentColor,
+                    activeTrackColor = accentColor
+                  )
+                )
+              }
+
+              // Scaling Mode Chips
+              Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                  text = "Scaling Mode",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Medium,
+                  color = if (isLight) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                  listOf("CROP" to "Fill Crop", "FIT" to "Fit", "FILL" to "Stretch").forEach { (mode, label) ->
+                    val isSelected = wallpaperScaleMode.equals(mode, ignoreCase = true)
+                    FilterChip(
+                      selected = isSelected,
+                      onClick = { onUpdateScaleMode(mode) },
+                      label = { Text(label, fontSize = 11.5.sp) }
+                    )
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
