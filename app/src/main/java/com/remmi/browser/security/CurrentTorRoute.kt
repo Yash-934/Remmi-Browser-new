@@ -40,15 +40,21 @@ object CurrentTorRoute {
     get() = _route.value.generation
 
   val isReady: Boolean
-    get() = _route.value.socksPort != null && (_route.value.socksPort ?: 0) > 0 && _route.value.isGhostActive
+    get() {
+      val r = _route.value
+      return r.isGhostActive && r.socksPort != null && (r.socksPort ?: 0) > 0 && r.isVerified && !r.failoverDirect
+    }
 
   fun markStartingGhost(): Long {
     val generation = generationSequence.incrementAndGet()
-    _route.value = _route.value.copy(
-      generation = generation,
-      // We don't clear socksPort here in case it's still valid from a previous session,
-      // but we update the generation so that any pending asynchronous Shield clears are invalidated.
-      failoverDirect = false
+    _route.value = TorRouteInfo(
+      host = "127.0.0.1",
+      socksPort = null,
+      isGhostActive = true,
+      isVerified = false,
+      exitIp = null,
+      failoverDirect = false,
+      generation = generation
     )
     return generation
   }
@@ -58,6 +64,7 @@ object CurrentTorRoute {
     isGhostActive: Boolean,
     isVerified: Boolean = false,
     exitIp: String? = null,
+    failoverDirect: Boolean = false,
     generation: Long = generationSequence.incrementAndGet(),
   ): Long {
     _route.value = TorRouteInfo(
@@ -66,7 +73,7 @@ object CurrentTorRoute {
       isGhostActive = isGhostActive,
       isVerified = isVerified,
       exitIp = exitIp,
-      failoverDirect = false,
+      failoverDirect = failoverDirect,
       generation = generation,
     )
     return generation
@@ -83,6 +90,10 @@ object CurrentTorRoute {
       generation = generation,
     )
     return generation
+  }
+
+  fun markShieldActive(generation: Long = generationSequence.incrementAndGet()): Long {
+    return clearRoute(generation)
   }
 }
 

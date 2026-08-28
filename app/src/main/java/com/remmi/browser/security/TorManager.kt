@@ -499,6 +499,7 @@ class TorManager(private val context: Context) {
         }
 
         withContext(Dispatchers.Main) {
+          CurrentTorRoute.markShieldActive()
           _bootstrapState.value = TorState.OFF
           _currentCircuit.value = null
         }

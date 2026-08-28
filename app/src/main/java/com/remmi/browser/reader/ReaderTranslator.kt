@@ -56,7 +56,19 @@ object ReaderTranslator {
    */
   suspend fun translateText(text: String, targetLanguageCode: String, isGhost: Boolean = false): String = withContext(Dispatchers.IO) {
     if (text.isBlank()) return@withContext ""
+    if (isGhost && !com.remmi.browser.security.CurrentTorRoute.isReady) {
+      Log.w(TAG, "Ghost translation blocked: Tor route is not verified")
+      return@withContext text
+    }
+
     try {
+      val client = try {
+        getClient(isGhost)
+      } catch (e: Exception) {
+        Log.w(TAG, "Ghost client creation failed: ${e.message}")
+        return@withContext text
+      }
+
       val encoded = URLEncoder.encode(text, "UTF-8")
       val url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLanguageCode&dt=t&q=$encoded"
 
@@ -65,7 +77,7 @@ object ReaderTranslator {
         .header("User-Agent", "Mozilla/5.0")
         .build()
 
-      val response = getClient(isGhost).newCall(request).execute()
+      val response = client.newCall(request).execute()
       if (!response.isSuccessful) return@withContext text
 
       val body = response.body?.string() ?: return@withContext text

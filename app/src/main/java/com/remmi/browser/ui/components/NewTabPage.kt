@@ -66,19 +66,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 fun getFaviconUrl(url: String): String {
-  if (com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url)) {
-    return "" // Zero external clearnet leaks for Tor hidden services
-  }
-  return try {
-    val cleanDomain = if (url.startsWith("http://") || url.startsWith("https://")) {
-      android.net.Uri.parse(url).host ?: url
-    } else {
-      url.split("/").firstOrNull() ?: url
-    }
-    "https://www.google.com/s2/favicons?domain=$cleanDomain&sz=128"
-  } catch (e: Exception) {
-    "https://www.google.com/s2/favicons?domain=google.com&sz=128"
-  }
+  // Zero external clearnet leaks for visited domains
+  return ""
 }
 
 @Composable

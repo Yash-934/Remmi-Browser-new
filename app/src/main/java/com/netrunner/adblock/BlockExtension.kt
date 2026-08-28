@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import org.mozilla.geckoview.WebExtension
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * Native Messaging Delegate for Remmi GeckoView WebExtension.
@@ -15,6 +18,11 @@ import org.mozilla.geckoview.WebExtension
  * WebExtension proxy authority has been completely removed.
  * Native Gecko layer (GeckoRuntime / GeckoSession) is the SOLE authoritative manager of proxy
  * routing, Tor SOCKS5 isolation, and network hardening.
+ *
+ * CONCURRENCY & ISOLATION INVARIANT:
+ * Every asynchronous request contains (tabId, sessionId, requestId) tracking.
+ * Responses are routed directly and deterministically to the originating tab/request,
+ * preventing cross-tab state leakage or callback overwrites.
  */
 enum class ExtensionState {
   NOT_REGISTERED,
@@ -26,10 +34,14 @@ enum class ExtensionState {
 
 class BlockExtension private constructor(private val adblockBridge: AdblockBridge) : WebExtension.MessageDelegate {
 
-  // Thread-safe listener registries
-  private val threatListeners = java.util.concurrent.CopyOnWriteArraySet<(url: String, type: String) -> Unit>()
-  private val htmlListeners = java.util.concurrent.CopyOnWriteArraySet<(url: String, html: String) -> Unit>()
-  private val clickListeners = java.util.concurrent.CopyOnWriteArraySet<(candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit>()
+  // Global listeners (for passive threat and click interception events)
+  private val threatListeners = CopyOnWriteArraySet<(url: String, type: String) -> Unit>()
+  private val htmlListeners = CopyOnWriteArraySet<(url: String, html: String) -> Unit>()
+  private val clickListeners = CopyOnWriteArraySet<(candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit>()
+
+  // Per-request / per-tab isolated callback registries
+  private val pendingHtmlRequests = ConcurrentHashMap<String, (url: String, html: String) -> Unit>()
+  private val pendingClickRequests = ConcurrentHashMap<String, (candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit>()
 
   // Legacy single-property compatibility with thread safety
   var onThreatNeutralized: ((url: String, type: String) -> Unit)?
@@ -95,6 +107,8 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
           val category = message.optString("category").ifEmpty { message.optString("type", "script") }
           val msgText = message.optString("message").ifEmpty { message.optString("msg") }
           val status = message.optString("status")
+          val requestId = message.optString("requestId")
+          val tabId = message.optString("tabId")
 
           when (type) {
             "PORT_STATUS" -> {
@@ -113,7 +127,21 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
                   if (c != null) candidatesList.add(c)
                 }
               }
-              log("[WEBEXT] Click inspection received: ${candidatesList.size} candidates (hasOverlay=$hasOverlay, intercepted=$intercepted)")
+              log("[WEBEXT] Click inspection received (req=$requestId, tab=$tabId): ${candidatesList.size} candidates (hasOverlay=$hasOverlay, intercepted=$intercepted)")
+
+              // Route to explicit caller first
+              if (requestId.isNotEmpty()) {
+                val targeted = pendingClickRequests.remove(requestId)
+                if (targeted != null) {
+                  try {
+                    targeted(candidatesList, hasOverlay, intercepted, pageUrl)
+                  } catch (e: Exception) {
+                    log("[WEBEXT] Targeted click callback error: ${e.message}")
+                  }
+                }
+              }
+
+              // Also dispatch to global listeners
               clickListeners.forEach { listener ->
                 try {
                   listener(candidatesList, hasOverlay, intercepted, pageUrl)
@@ -137,6 +165,29 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
             }
             "EXTRACTED_HTML", "extracted_html" -> {
               val html = message.optString("html")
+
+              // Route to isolated request first
+              if (requestId.isNotEmpty()) {
+                val targeted = pendingHtmlRequests.remove(requestId)
+                if (targeted != null) {
+                  try {
+                    targeted(url, html)
+                  } catch (e: Exception) {
+                    log("[WEBEXT] Targeted html callback error: ${e.message}")
+                  }
+                }
+              } else if (tabId.isNotEmpty()) {
+                val targeted = pendingHtmlRequests.remove(tabId)
+                if (targeted != null) {
+                  try {
+                    targeted(url, html)
+                  } catch (e: Exception) {
+                    log("[WEBEXT] Targeted html callback error: ${e.message}")
+                  }
+                }
+              }
+
+              // Also dispatch to global listeners
               htmlListeners.forEach { listener ->
                 try {
                   listener(url, html)
@@ -167,15 +218,33 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
             _extensionState.value = ExtensionState.DISCONNECTED
           }
         }
+        pendingHtmlRequests.clear()
+        pendingClickRequests.clear()
       }
     })
   }
 
-  fun extractActiveTabHtml() {
+  fun extractTabHtml(
+    tabId: String? = null,
+    sessionId: String? = null,
+    requestId: String = UUID.randomUUID().toString(),
+    callback: ((url: String, html: String) -> Unit)? = null
+  ) {
+    if (callback != null) {
+      pendingHtmlRequests[requestId] = callback
+      if (tabId != null) {
+        pendingHtmlRequests[tabId] = callback
+      }
+    }
+
     val msg = JSONObject().apply {
       put("type", "EXTRACT_HTML")
       put("action", "extract_html")
+      put("requestId", requestId)
+      if (tabId != null) put("tabId", tabId)
+      if (sessionId != null) put("sessionId", sessionId)
     }
+
     synchronized(portLock) {
       val currentPort = activePort
       if (currentPort != null) {
@@ -183,9 +252,22 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
           currentPort.postMessage(msg)
         } catch (e: Exception) {
           log("[WEBEXT] Could not send extract_html: ${e.message}")
+          if (callback != null) {
+            pendingHtmlRequests.remove(requestId)
+            if (tabId != null) pendingHtmlRequests.remove(tabId)
+          }
+        }
+      } else {
+        if (callback != null) {
+          pendingHtmlRequests.remove(requestId)
+          if (tabId != null) pendingHtmlRequests.remove(tabId)
         }
       }
     }
+  }
+
+  fun extractActiveTabHtml() {
+    extractTabHtml(null, null, UUID.randomUUID().toString(), null)
   }
 
   companion object {

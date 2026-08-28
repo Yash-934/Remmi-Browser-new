@@ -123,7 +123,7 @@ class AdblockBridge {
       val uri = URI(url)
       val host = uri.host?.lowercase() ?: return false
 
-      if (allowList.any { host.endsWith(it) }) {
+      if (allowList.any { rule -> host == rule || host.endsWith(".$rule") }) {
         return false
       }
 

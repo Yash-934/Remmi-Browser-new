@@ -314,7 +314,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
       RECOVERY_REQUIRED
     }
 
-    private val dbLock = java.util.concurrent.locks.ReentrantReadWriteLock(true)
+    internal val dbLock = java.util.concurrent.locks.ReentrantReadWriteLock(true)
 
     @Volatile private var wipeState: WipeState = WipeState.IDLE
 
@@ -384,81 +384,65 @@ abstract class NetRunnerDatabase : RoomDatabase() {
       }
     }
 
+    @androidx.annotation.VisibleForTesting
+    var testPassphraseProvider: (() -> ByteArray)? = null
+
     private fun getOrCreatePassphrase(context: Context): ByteArray {
+      testPassphraseProvider?.let { provider ->
+        return provider()
+      }
+
       try {
         val keyStore = try {
           KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        } catch (_: Throwable) {
-          null
+        } catch (e: Throwable) {
+          throw SecurityException("Android Keystore is unavailable: ${e.message}", e)
         }
 
-        if (keyStore != null) {
-          if (!keyStore.containsAlias(KEY_ALIAS)) {
-            try {
-              val keyGenerator = KeyGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_AES,
-                ANDROID_KEYSTORE
-              )
-              val spec = KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-              )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build()
-              keyGenerator.init(spec)
-              keyGenerator.generateKey()
-            } catch (_: Throwable) {}
-          }
-
-          val secretKey = try {
-            keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-          } catch (_: Throwable) {
-            null
-          }
-
-          if (secretKey != null) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val encryptedPassphraseB64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
-            val ivB64 = prefs.getString(KEY_IV, null)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-
-            if (encryptedPassphraseB64 != null && ivB64 != null) {
-              val iv = Base64.decode(ivB64, Base64.NO_WRAP)
-              val encryptedData = Base64.decode(encryptedPassphraseB64, Base64.NO_WRAP)
-              val gcmSpec = GCMParameterSpec(128, iv)
-              cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-              return cipher.doFinal(encryptedData)
-            } else {
-              val rawPassphrase = ByteArray(32)
-              SecureRandom().nextBytes(rawPassphrase)
-
-              cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-              val iv = cipher.iv
-              val encryptedData = cipher.doFinal(rawPassphrase)
-
-              prefs.edit()
-                .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(encryptedData, Base64.NO_WRAP))
-                .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
-                .apply()
-
-              return rawPassphrase
-            }
-          }
+        if (!keyStore.containsAlias(KEY_ALIAS)) {
+          val keyGenerator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            ANDROID_KEYSTORE
+          )
+          val spec = KeyGenParameterSpec.Builder(
+            KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+          )
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .build()
+          keyGenerator.init(spec)
+          keyGenerator.generateKey()
         }
 
-        // Fallback for non-hardware keystore execution environments
+        val secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+          ?: throw SecurityException("Failed to retrieve master secret key from Android Keystore")
+
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val rawB64 = prefs.getString("vault_raw_passphrase_env", null)
-        if (rawB64 != null) {
-          return Base64.decode(rawB64, Base64.NO_WRAP)
+        val encryptedPassphraseB64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
+        val ivB64 = prefs.getString(KEY_IV, null)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+
+        if (encryptedPassphraseB64 != null && ivB64 != null) {
+          val iv = Base64.decode(ivB64, Base64.NO_WRAP)
+          val encryptedData = Base64.decode(encryptedPassphraseB64, Base64.NO_WRAP)
+          val gcmSpec = GCMParameterSpec(128, iv)
+          cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+          return cipher.doFinal(encryptedData)
         } else {
           val rawPassphrase = ByteArray(32)
           SecureRandom().nextBytes(rawPassphrase)
+
+          cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+          val iv = cipher.iv
+          val encryptedData = cipher.doFinal(rawPassphrase)
+
           prefs.edit()
-            .putString("vault_raw_passphrase_env", Base64.encodeToString(rawPassphrase, Base64.NO_WRAP))
+            .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(encryptedData, Base64.NO_WRAP))
+            .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
             .apply()
+
           return rawPassphrase
         }
       } catch (e: Exception) {
@@ -485,13 +469,7 @@ abstract class NetRunnerDatabase : RoomDatabase() {
         }
         val passphrase = getOrCreatePassphrase(context)
         try {
-          val supportFactory = androidx.sqlite.db.SupportSQLiteOpenHelper.Factory { config ->
-            try {
-              SupportFactory(passphrase).create(config)
-            } catch (_: Throwable) {
-              androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(config)
-            }
-          }
+          val supportFactory = SupportFactory(passphrase)
           instance = Room.databaseBuilder(
             context.applicationContext,
             NetRunnerDatabase::class.java,

@@ -2298,29 +2298,7 @@ fun BrowserScreen(
                   .padding(vertical = 4.dp)
                   .clickable {
                     req.onSelect(cred)
-                    val safeUser = cred.username.replace("'", "\\'")
-                    val safePass = cred.password.replace("'", "\\'")
-                    val jsAutofill = """
-                      javascript:(function() {
-                        var u = '$safeUser';
-                        var p = '$safePass';
-                        var inputs = document.querySelectorAll('input');
-                        var userInput = null, passInput = null;
-                        for (var i = 0; i < inputs.length; i++) {
-                          var t = (inputs[i].type || '').toLowerCase();
-                          var n = (inputs[i].name || '').toLowerCase();
-                          var id = (inputs[i].id || '').toLowerCase();
-                          var ac = (inputs[i].autocomplete || '').toLowerCase();
-                          if (t === 'password') {
-                            passInput = inputs[i];
-                          } else if (t === 'text' || t === 'email' || ac.includes('user') || ac.includes('email') || n.includes('user') || n.includes('email') || id.includes('user') || id.includes('email') || n.includes('login') || id.includes('login')) {
-                            if (!userInput) userInput = inputs[i];
-                          }
-                        }
-                        if (userInput) { userInput.value = u; userInput.dispatchEvent(new Event('input', {bubbles:true})); }
-                        if (passInput) { passInput.value = p; passInput.dispatchEvent(new Event('input', {bubbles:true})); }
-                      })();
-                    """.trimIndent()
+                    val jsAutofill = com.remmi.browser.security.PasswordAutofillHelper.generateSafeAutofillScript(cred.username, cred.password)
                     geckoEngine.executeScript(activeTab.id, jsAutofill)
                     android.widget.Toast.makeText(context, "Autofilled credentials", android.widget.Toast.LENGTH_SHORT).show()
                   }

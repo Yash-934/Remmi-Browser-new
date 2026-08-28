@@ -6,7 +6,7 @@ import org.mozilla.gecko.util.GeckoBundle
 
 /**
  * Controller for applying native Mozilla Gecko preferences to GeckoView runtime.
- * Bridges native Necko proxy and privacy configurations.
+ * Bridges native Necko proxy and privacy configurations with explicit error handling.
  */
 class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
 
@@ -70,15 +70,13 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
     }
     return try {
       EventDispatcher.getInstance().dispatch("GeckoView:SetDefaultPrefs", bundle)
-      runtime?.let { rt ->
-        try {
-          rt.setDefaultPrefs(bundle)
-        } catch (_: Throwable) {}
+      if (runtime != null) {
+        runtime.setDefaultPrefs(bundle)
       }
       Log.i(TAG, "Successfully applied ${prefs.size} native Gecko preferences (branch=$branch)")
       true
     } catch (t: Throwable) {
-      Log.e(TAG, "Failed to dispatch pref bundle: ${t.message}", t)
+      Log.e(TAG, "Failed to apply Gecko preferences: ${t.message}", t)
       false
     }
   }
@@ -86,10 +84,8 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
   private fun dispatchPrefBundle(name: String, value: Any, bundle: GeckoBundle, branch: Int): Boolean {
     return try {
       EventDispatcher.getInstance().dispatch("GeckoView:SetDefaultPrefs", bundle)
-      runtime?.let { rt ->
-        try {
-          rt.setDefaultPrefs(bundle)
-        } catch (_: Throwable) {}
+      if (runtime != null) {
+        runtime.setDefaultPrefs(bundle)
       }
       Log.d(TAG, "Applied Gecko pref $name = $value (branch=$branch)")
       true

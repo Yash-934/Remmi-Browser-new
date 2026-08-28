@@ -57,6 +57,9 @@ data class ReaderArticle(
 object ReaderExtractor {
   private const val TAG = "ReaderExtractor"
 
+  private const val MAX_RESPONSE_BYTES = 2L * 1024L * 1024L // 2 MB cap
+  private const val MAX_ARTICLE_PARAGRAPHS = 500
+
   private fun getClient(isGhost: Boolean, url: String? = null): OkHttpClient {
     return com.remmi.browser.security.NetworkRouteAuthority.createHttpClient(
       isGhost = isGhost,
@@ -77,14 +80,31 @@ object ReaderExtractor {
       url.substringAfter("://").substringBefore('/')
     }
 
+    // SSRF and Scheme Gate
+    if (!com.remmi.browser.security.RedirectInspector.isSchemeSafeForNavigation(url)) {
+      return@withContext createFallbackArticle(url, currentTitle, domain, "Extraction blocked: Unsupported or unsafe URL scheme")
+    }
+
+    if (com.remmi.browser.security.NavigationSecurityAuthority.isPrivateOrLocalHost(domain)) {
+      return@withContext createFallbackArticle(url, currentTitle, domain, "Extraction blocked: Local/Private address targets are prohibited")
+    }
+
     val isOnion = com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url)
-    val client = getClient(isGhost || isOnion, url)
+    if ((isGhost || isOnion) && !com.remmi.browser.security.CurrentTorRoute.isReady) {
+      return@withContext createFallbackArticle(url, currentTitle, domain, "Extraction blocked: Tor route is not verified")
+    }
+
+    val client = try {
+      getClient(isGhost || isOnion, url)
+    } catch (e: Exception) {
+      return@withContext createFallbackArticle(url, currentTitle, domain, "Network authority error: ${e.message}")
+    }
 
     try {
       val request = Request.Builder()
         .url(url)
         .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36")
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8")
         .build()
 
       val response = client.newCall(request).execute()
@@ -92,7 +112,20 @@ object ReaderExtractor {
         return@withContext createFallbackArticle(url, currentTitle, domain, "HTTP error ${response.code}")
       }
 
-      val html = response.body?.string() ?: ""
+      val contentType = response.header("Content-Type", "")?.lowercase() ?: ""
+      if (contentType.isNotEmpty() && !contentType.contains("text/html") && !contentType.contains("xhtml") && !contentType.contains("text/plain")) {
+        return@withContext createFallbackArticle(url, currentTitle, domain, "Unsupported Content-Type: $contentType")
+      }
+
+      val responseBody = response.body
+      if (responseBody == null) {
+        return@withContext createFallbackArticle(url, currentTitle, domain, "Empty page response")
+      }
+
+      val source = responseBody.source()
+      val bytes = source.readByteArray(MAX_RESPONSE_BYTES)
+      val html = String(bytes, Charsets.UTF_8)
+
       if (html.isBlank()) {
         return@withContext createFallbackArticle(url, currentTitle, domain, "Empty page response")
       }

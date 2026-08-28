@@ -311,14 +311,44 @@ object PasswordCryptoEngine {
   }
 
   fun extractCanonicalHost(rawUrl: String): String {
-    var s = rawUrl.trim().lowercase()
-    if (s.startsWith("https://")) s = s.removePrefix("https://")
-    if (s.startsWith("http://")) s = s.removePrefix("http://")
-    val slashIdx = s.indexOf('/')
-    if (slashIdx != -1) s = s.substring(0, slashIdx)
-    val portIdx = s.indexOf(':')
-    if (portIdx != -1) s = s.substring(0, portIdx)
-    return s.removePrefix("www.")
+    val trimmed = rawUrl.trim()
+    if (trimmed.isEmpty()) return ""
+
+    val normalizedUrl = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+    val parsedHost = try {
+      val uri = java.net.URI(normalizedUrl)
+      uri.host ?: android.net.Uri.parse(normalizedUrl).host ?: ""
+    } catch (_: Exception) {
+      try {
+        android.net.Uri.parse(normalizedUrl).host ?: ""
+      } catch (_: Exception) {
+        val withoutScheme = trimmed.substringAfter("://")
+        withoutScheme.substringBefore('/').substringBefore(':')
+      }
+    }
+
+    var host = parsedHost.trim().lowercase()
+    if (host.startsWith("[") && host.endsWith("]")) {
+      // IPv6 literal
+      return host
+    }
+
+    // Strip trailing dots
+    host = host.trimEnd('.')
+
+    // IDN Punycode normalization
+    host = try {
+      java.net.IDN.toASCII(host).lowercase()
+    } catch (_: Exception) {
+      host
+    }
+
+    // Remove leading www.
+    if (host.startsWith("www.")) {
+      host = host.removePrefix("www.")
+    }
+
+    return host
   }
 
   // --- 6. Hardware Keystore Biometric Key Operations ---

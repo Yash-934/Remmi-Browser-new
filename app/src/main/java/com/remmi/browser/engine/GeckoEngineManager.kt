@@ -489,8 +489,15 @@ class GeckoEngineManager private constructor(private val context: Context) {
 
   fun loadUrl(tabId: String, url: String) {
     if (url.isBlank()) return
+    val isGhost = currentProfile == PrivacyProfile.GHOST
+    val check = com.remmi.browser.security.NavigationSecurityAuthority.validateAndSanitizeNavigation(url, isGhost)
+    if (check.decision == com.remmi.browser.security.NavigationDecision.BLOCK) {
+      Log.w(TAG, "Blocked navigation to '$url' reason: ${check.reason}")
+      return
+    }
+    val targetUrl = check.sanitizedUrl ?: url
     onMainSession(tabId, "LOAD_URL") { session ->
-      session.loadUri(url)
+      session.loadUri(targetUrl)
     }
   }
 
