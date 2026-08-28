@@ -258,12 +258,6 @@ fun BrowserScreen(
   var isFullScreenMode by remember { mutableStateOf(false) }
   var isSessionRestored by remember { mutableStateOf(false) }
   var isWaitingForTor by remember { mutableStateOf(false) }
-  var isUrlBarScrolledOut by remember { mutableStateOf(false) }
-
-  // Always reveal URL bar when changing tabs or loading new URL
-  LaunchedEffect(activeTab.id, activeTab.url) {
-    isUrlBarScrolledOut = false
-  }
 
   val isGhost = activeTab.profile == PrivacyProfile.GHOST
   val profileColor = if (isGhost) ThemeCyber.colors.torPurple else ThemeCyber.colors.primary
@@ -503,11 +497,11 @@ fun BrowserScreen(
         .fillMaxSize()
         .padding(paddingValues)
     ) {
-      // 1. Sleek Terminal URL Bar & Quick Nav (hidden on New Tab home screen, and auto-hides on web scroll down like Chrome)
+      // 1. Sleek Terminal URL Bar & Quick Nav (hidden on New Tab home screen, reader mode, and full view mode)
       AnimatedVisibility(
-        visible = !isFullScreenMode && !activeTab.isReaderMode && !isNewTab && !isUrlBarScrolledOut,
-        enter = fadeIn(animationSpec = tween(220)) + expandVertically(animationSpec = tween(220)) + slideInVertically(animationSpec = tween(220)),
-        exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(180)) + slideOutVertically(animationSpec = tween(180)),
+        visible = !isFullScreenMode && !activeTab.isReaderMode && !isNewTab,
+        enter = fadeIn(animationSpec = tween(150)) + expandVertically(animationSpec = tween(150)),
+        exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(animationSpec = tween(150)),
       ) {
         TerminalUrlBar(
           url = activeTab.url,
@@ -822,11 +816,6 @@ fun BrowserScreen(
             onContextMenuRequested = { data ->
               activeContextMenuData = data
             },
-            onScrollChange = { isScrollingDown ->
-              if (!isNewTab && !activeTab.isReaderMode && !isFullScreenMode) {
-                isUrlBarScrolledOut = isScrollingDown
-              }
-            },
             modifier = Modifier.fillMaxSize()
           )
         }
@@ -946,7 +935,7 @@ fun BrowserScreen(
           modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
           shape = RoundedCornerShape(8.dp),
           color = ThemeCyber.colors.surface,
-          border = BorderStroke(1.dp, ThemeCyber.colors.neonCyan)
+          border = BorderStroke(1.dp, ThemeCyber.colors.primary)
         ) {
           Row(
             modifier = Modifier.padding(10.dp),
@@ -954,12 +943,12 @@ fun BrowserScreen(
             horizontalArrangement = Arrangement.SpaceBetween
           ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-              Icon(Icons.Default.VpnKey, contentDescription = null, tint = ThemeCyber.colors.neonCyan, modifier = Modifier.size(20.dp))
+              Icon(Icons.Default.VpnKey, contentDescription = null, tint = ThemeCyber.colors.primary, modifier = Modifier.size(20.dp))
               Spacer(modifier = Modifier.width(8.dp))
               Column {
                 Text(
                   "SAVE PASSWORD IN CYBER VAULT?",
-                  color = ThemeCyber.colors.neonCyan,
+                  color = ThemeCyber.colors.primary,
                   fontSize = 11.sp,
                   fontFamily = CyberMonoFamily,
                   fontWeight = FontWeight.Bold
@@ -977,10 +966,10 @@ fun BrowserScreen(
               }
               Button(
                 onClick = { savePrompt?.onSave?.invoke() },
-                colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.neonCyan),
+                colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.primary),
                 modifier = Modifier.height(32.dp)
               ) {
-                Text("SAVE", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("SAVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
               }
             }
           }
@@ -1561,7 +1550,7 @@ fun BrowserScreen(
                 text = {
                   Text(
                     "Security Center",
-                    color = ThemeCyber.colors.neonCyan,
+                    color = ThemeCyber.colors.textPrimary,
                     fontFamily = ThemeCyber.fontFamily,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -1571,7 +1560,7 @@ fun BrowserScreen(
                   Icon(
                     Icons.Default.Shield,
                     contentDescription = null,
-                    tint = ThemeCyber.colors.neonCyan,
+                    tint = if (ThemeCyber.colors.isLight) ThemeCyber.colors.primary else ThemeCyber.colors.neonCyan,
                     modifier = Modifier.size(18.dp)
                   )
                 },

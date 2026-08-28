@@ -271,7 +271,7 @@ fun SettingsScreen(
         val (vaultStatusLabel, vaultStatusColor) = when (vaultLockState) {
           is com.remmi.browser.security.VaultLockState.Unlocked -> "UNLOCKED // ACTIVE" to ThemeCyber.colors.successGreen
           is com.remmi.browser.security.VaultLockState.Locked -> "LOCKED // AES-256-GCM" to ThemeCyber.colors.primary
-          is com.remmi.browser.security.VaultLockState.Uninitialized -> "READY TO INITIALIZE" to ThemeCyber.colors.neonCyan
+          is com.remmi.browser.security.VaultLockState.Uninitialized -> "READY TO INITIALIZE" to (if (ThemeCyber.colors.isLight) ThemeCyber.colors.primary else ThemeCyber.colors.neonCyan)
           is com.remmi.browser.security.VaultLockState.TemporarilyLocked -> "LOCKED OUT (${(vaultLockState as com.remmi.browser.security.VaultLockState.TemporarilyLocked).remainingSeconds}s)" to ThemeCyber.colors.dangerRed
           is com.remmi.browser.security.VaultLockState.CompromisedDevice -> "COMPROMISED DEVICE" to ThemeCyber.colors.dangerRed
         }

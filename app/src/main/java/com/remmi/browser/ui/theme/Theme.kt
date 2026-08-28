@@ -41,6 +41,7 @@ fun RemmiTheme(
     textPrimary = if (isLight) Color(0xFF202124) else Color(0xFFE0F7FA),
     textSecondary = if (isLight) Color(0xFF5F6368) else Color(0xFF88A0B0),
     textMuted = if (isLight) Color(0xFF70757A) else Color(0xFF4C5D6E),
+    neonCyan = if (isLight) Color(0xFF007A87) else Color(0xFF00FFFF),
     dangerRed = if (isLight) Color(0xFFD93025) else Color(0xFFFF003C),
     successGreen = if (isLight) Color(0xFF137333) else Color(0xFF00FF66),
     warningYellow = if (isLight) Color(0xFFE37400) else Color(0xFFFFE600),

@@ -32,6 +32,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -198,396 +200,290 @@ fun TerminalUrlBar(
   }
 
   Column(modifier = modifier.fillMaxWidth()) {
-    // 1. Primary Address Bar Modern Pill Container
-    Surface(
-      shape = RoundedCornerShape(23.dp),
-      color = ThemeCyber.colors.surface,
-      border = BorderStroke(1.1.dp, borderColor),
-      shadowElevation = if (isEditing) 6.dp else 2.dp,
+    // 1. Primary Address Bar Modern Row Container
+    Row(
       modifier = Modifier
         .fillMaxWidth()
-        .height(46.dp)
+        .padding(horizontal = 4.dp, vertical = 2.dp)
+        .height(46.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-      Box(
-        modifier = Modifier
-          .fillMaxSize()
-          .background(
-            Brush.horizontalGradient(
-              colors = listOf(
-                ThemeCyber.colors.surface,
-                ThemeCyber.colors.surfaceLight.copy(alpha = 0.65f),
-                ThemeCyber.colors.surface
-              )
-            )
-          )
+      // Home Button
+      IconButton(
+        onClick = { onUrlSubmit("about:home") },
+        modifier = Modifier.size(36.dp)
       ) {
-        Row(
+        Icon(
+          imageVector = Icons.Outlined.Home,
+          contentDescription = "Home",
+          tint = ThemeCyber.colors.textPrimary,
+          modifier = Modifier.size(22.dp)
+        )
+      }
+
+      // Address Bar Pill Container
+      Surface(
+        shape = RoundedCornerShape(23.dp),
+        color = ThemeCyber.colors.surface,
+        border = BorderStroke(1.1.dp, borderColor),
+        shadowElevation = if (isEditing) 6.dp else 2.dp,
+        modifier = Modifier
+          .weight(1f)
+          .fillMaxHeight()
+      ) {
+        Box(
           modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 6.dp),
-          verticalAlignment = Alignment.CenterVertically,
+            .background(
+              Brush.horizontalGradient(
+                colors = listOf(
+                  ThemeCyber.colors.surface,
+                  ThemeCyber.colors.surfaceLight.copy(alpha = 0.65f),
+                  ThemeCyber.colors.surface
+                )
+              )
+            )
         ) {
-          // Protocol / Security indicator capsule pill button
-          val badgeText = when {
-            isInternalPage -> "SANDBOX"
-            url.contains(".onion") -> "ONION"
-            isSecure -> "TLS"
-            else -> "HTTP"
-          }
-          val badgeColor = if (isEffectiveSecure) accentColor else ThemeCyber.colors.dangerRed
-          val badgeIcon = if (isEffectiveSecure) {
-            when {
-              isInternalPage -> Icons.Default.Shield
-              url.contains(".onion") -> Icons.Default.VpnKey
-              else -> Icons.Default.Lock
-            }
-          } else {
-            Icons.Default.Warning
-          }
-
-          Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = badgeColor.copy(alpha = 0.12f),
-            border = BorderStroke(0.7.dp, badgeColor.copy(alpha = 0.35f)),
+          Row(
             modifier = Modifier
-              .clickable { onOpenSecurityPanel() }
-              .testTag("security_badge_button")
+              .fillMaxSize()
+              .padding(start = 6.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
           ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+            // Protocol / Security indicator capsule pill button
+            val badgeText = when {
+              isInternalPage -> "SANDBOX"
+              url.contains(".onion") -> "ONION"
+              isSecure -> "TLS"
+              else -> "HTTP"
+            }
+            val badgeColor = if (isEffectiveSecure) accentColor else ThemeCyber.colors.dangerRed
+            val badgeIcon = if (isEffectiveSecure) {
+              when {
+                isInternalPage -> Icons.Default.Shield
+                url.contains(".onion") -> Icons.Default.VpnKey
+                else -> Icons.Default.Lock
+              }
+            } else {
+              Icons.Default.Warning
+            }
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = badgeColor.copy(alpha = 0.12f),
+              border = BorderStroke(0.7.dp, badgeColor.copy(alpha = 0.35f)),
+              modifier = Modifier
+                .clickable { onOpenSecurityPanel() }
+                .testTag("security_badge_button")
             ) {
-              // Glowing live status dot
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+              ) {
+                Icon(
+                  imageVector = badgeIcon,
+                  contentDescription = if (isEffectiveSecure) "Secure Connection" else "Unencrypted Connection",
+                  tint = badgeColor,
+                  modifier = Modifier.size(11.dp),
+                )
+                Spacer(modifier = Modifier.width(3.5.dp))
+                Text(
+                  text = badgeText,
+                  color = badgeColor,
+                  fontFamily = CyberMonoFamily,
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold,
+                )
+              }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Center Text field / Display
+            if (isEditing) {
               Box(
                 modifier = Modifier
-                  .size(5.dp)
-                  .clip(CircleShape)
-                  .background(badgeColor)
-              )
-              Spacer(modifier = Modifier.width(4.5.dp))
-              Icon(
-                imageVector = badgeIcon,
-                contentDescription = if (isEffectiveSecure) "Secure Connection" else "Unencrypted Connection",
-                tint = badgeColor,
-                modifier = Modifier.size(11.dp),
-              )
-              Spacer(modifier = Modifier.width(3.5.dp))
-              Text(
-                text = badgeText,
-                color = badgeColor,
-                fontFamily = CyberMonoFamily,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-              )
-            }
-          }
-
-          Spacer(modifier = Modifier.width(8.dp))
-
-          // Center Text field / Display
-          if (isEditing) {
-            Box(
-              modifier = Modifier
-                .weight(1f)
-                .padding(end = 4.dp),
-              contentAlignment = Alignment.CenterStart
-            ) {
-              if (editText.isEmpty()) {
+                  .weight(1f)
+                  .padding(end = 4.dp),
+                contentAlignment = Alignment.CenterStart
+              ) {
+                if (editText.isEmpty()) {
+                  Text(
+                    text = "Search or enter URL...",
+                    color = ThemeCyber.colors.textMuted,
+                    fontFamily = CyberMonoFamily,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
+                }
+                BasicTextField(
+                  value = editText,
+                  onValueChange = { editText = it },
+                  textStyle = TextStyle(
+                    color = ThemeCyber.colors.textPrimary,
+                    fontFamily = CyberMonoFamily,
+                    fontSize = 14.sp,
+                  ),
+                  keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Go,
+                    autoCorrectEnabled = false
+                  ),
+                  keyboardActions = KeyboardActions(
+                    onGo = {
+                      val target = if (editText.trim().contains(" ") && !editText.trim().startsWith("http")) {
+                        searchEngine.buildSearchUrl(editText.trim())
+                      } else {
+                        editText.trim()
+                      }
+                      onUrlSubmit(target)
+                      isEditing = false
+                    }
+                  ),
+                  singleLine = true,
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                )
+              }
+              if (editText.isNotEmpty()) {
+                IconButton(
+                  onClick = { editText = "" },
+                  modifier = Modifier.size(24.dp)
+                ) {
+                  Icon(
+                    Icons.Default.Clear,
+                    contentDescription = "Clear text",
+                    tint = ThemeCyber.colors.textSecondary,
+                    modifier = Modifier.size(16.dp)
+                  )
+                }
+              }
+            } else {
+              Box(
+                modifier = Modifier
+                  .weight(1f)
+                  .clickable { isEditing = true }
+                  .padding(vertical = 8.dp),
+                contentAlignment = Alignment.CenterStart
+              ) {
                 Text(
-                  text = "Search with ${searchEngine.displayName} or enter URL...",
-                  color = ThemeCyber.colors.textMuted,
+                  text = buildAnnotatedString {
+                    withStyle(style = SpanStyle(fontWeight = FontWeight.Bold, color = ThemeCyber.colors.textPrimary)) {
+                      append(domainAndPath.first)
+                    }
+                    if (domainAndPath.second.isNotEmpty()) {
+                      withStyle(style = SpanStyle(color = ThemeCyber.colors.textMuted)) {
+                        append(domainAndPath.second)
+                      }
+                    }
+                  },
                   fontFamily = CyberMonoFamily,
-                  fontSize = 12.sp,
+                  fontSize = 14.sp,
                   maxLines = 1,
                   overflow = TextOverflow.Ellipsis
                 )
               }
-              BasicTextField(
-                value = editText,
-                onValueChange = { editText = it },
-                textStyle = TextStyle(
-                  color = ThemeCyber.colors.textPrimary,
-                  fontFamily = CyberMonoFamily,
-                  fontSize = 13.sp,
-                  fontWeight = FontWeight.Medium,
-                ),
-                cursorBrush = SolidColor(accentColor),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                  keyboardType = KeyboardType.Uri,
-                  imeAction = ImeAction.Go,
-                  autoCorrectEnabled = false,
-                ),
-                keyboardActions = KeyboardActions(
-                  onGo = {
-                    if (editText.isNotBlank()) {
-                      val trimmed = editText.trim()
-                      if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || (trimmed.contains(".") && !trimmed.contains(" "))) {
-                        onUrlSubmit(trimmed)
-                      } else {
-                        onUrlSubmit(searchEngine.buildSearchUrl(trimmed))
-                      }
-                    }
-                    isEditing = false
-                  }
-                ),
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .focusRequester(focusRequester)
-                  .testTag("url_input_field"),
-              )
             }
 
-            if (editText.isNotEmpty()) {
+            // Bookmark Star Inside Pill
+            if (!isInternalPage) {
               IconButton(
-                onClick = { editText = "" },
-                modifier = Modifier
-                  .size(28.dp)
-                  .clip(CircleShape)
-                  .background(ThemeCyber.colors.surfaceLight.copy(alpha = 0.6f))
-                  .testTag("clear_url_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.Default.Close,
-                  contentDescription = "Clear URL",
-                  tint = ThemeCyber.colors.textSecondary,
-                  modifier = Modifier.size(14.dp),
-                )
-              }
-            } else {
-              IconButton(
-                onClick = { isEditing = false },
-                modifier = Modifier
-                  .size(28.dp)
-                  .testTag("cancel_edit_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.Default.Close,
-                  contentDescription = "Cancel edit",
-                  tint = ThemeCyber.colors.textMuted,
-                  modifier = Modifier.size(15.dp),
-                )
-              }
-            }
-          } else {
-            // Display Mode with Beautiful Domain + Path Highlight
-            Box(
-              modifier = Modifier
-                .weight(1f)
-                .combinedClickable(
-                  onClick = {
-                    editText = if (isInternalPage) "" else url
-                    isEditing = true
-                  },
-                  onLongClick = {
-                    if (!isInternalPage) {
-                      showLongPressMenu = true
-                    }
-                  }
-                )
-                .testTag("url_display_text"),
-              contentAlignment = Alignment.CenterStart
-            ) {
-              if (isInternalPage) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = null,
-                    tint = ThemeCyber.colors.textMuted,
-                    modifier = Modifier.size(13.dp)
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Text(
-                    text = "Search or type web address",
-                    color = ThemeCyber.colors.textMuted,
-                    fontFamily = CyberMonoFamily,
-                    fontSize = 12.sp,
-                  )
-                }
-              } else {
-                val (domain, path) = domainAndPath
-                val annotatedUrl = buildAnnotatedString {
-                  withStyle(
-                    style = SpanStyle(
-                      color = ThemeCyber.colors.textPrimary,
-                      fontWeight = FontWeight.SemiBold,
-                      fontSize = 12.5.sp,
-                      fontFamily = CyberMonoFamily
-                    )
-                  ) {
-                    append(domain)
-                  }
-                  if (path.isNotEmpty()) {
-                    withStyle(
-                      style = SpanStyle(
-                        color = ThemeCyber.colors.textMuted,
-                        fontWeight = FontWeight.Normal,
-                        fontSize = 11.5.sp,
-                        fontFamily = CyberMonoFamily
-                      )
-                    ) {
-                      append(path)
-                    }
-                  }
-                }
-
-                Text(
-                  text = annotatedUrl,
-                  maxLines = 1,
-                  overflow = TextOverflow.Ellipsis,
-                )
-              }
-
-              // Long press context menu
-              DropdownMenu(
-                expanded = showLongPressMenu,
-                onDismissRequest = { showLongPressMenu = false },
-                modifier = Modifier
-                  .background(ThemeCyber.colors.surface)
-                  .border(1.dp, ThemeCyber.colors.surfaceBorder, RoundedCornerShape(8.dp))
-              ) {
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp)) },
-                  text = { Text("Copy Exact URL", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
-                  onClick = {
-                    showLongPressMenu = false
-                    clipboard.copy(url, "URL")
-                    Toast.makeText(context, "Exact URL copied", Toast.LENGTH_SHORT).show()
-                  }
-                )
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = ThemeCyber.colors.secondary, modifier = Modifier.size(16.dp)) },
-                  text = { Text("Copy Clean URL (No Trackers)", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
-                  onClick = {
-                    showLongPressMenu = false
-                    val clean = com.remmi.browser.security.RedirectInspector.stripTrackingParameters(url)
-                    clipboard.copy(clean, "Clean URL")
-                    Toast.makeText(context, "Clean URL copied", Toast.LENGTH_SHORT).show()
-                  }
-                )
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Public, contentDescription = null, tint = ThemeCyber.colors.primary, modifier = Modifier.size(16.dp)) },
-                  text = { Text("Copy Domain Only", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
-                  onClick = {
-                    showLongPressMenu = false
-                    val domain = com.remmi.browser.security.RedirectInspector.extractDomain(url)
-                    clipboard.copy(domain, "Domain")
-                    Toast.makeText(context, "Domain copied: $domain", Toast.LENGTH_SHORT).show()
-                  }
-                )
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null, tint = ThemeCyber.colors.secondary, modifier = Modifier.size(16.dp)) },
-                  text = { Text("Inspect Link & Redirects", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
-                  onClick = {
-                    showLongPressMenu = false
-                    onInspectRedirects()
-                  }
-                )
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Shield, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp)) },
-                  text = { Text("Security Shield Info", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
-                  onClick = {
-                    showLongPressMenu = false
-                    onOpenSecurityPanel()
-                  }
-                )
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, tint = ThemeCyber.colors.textSecondary, modifier = Modifier.size(16.dp)) },
-                  text = { Text("Share Link", color = ThemeCyber.colors.textPrimary, fontSize = 13.sp) },
-                  onClick = {
-                    showLongPressMenu = false
-                    onShareUrl()
-                  }
-                )
-              }
-            }
-
-            // Embedded Action Icons on the right (Reader, Bookmark, Reload)
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-              if (!isInternalPage) {
-                // Reader Mode Pill Button
-                IconButton(
-                  onClick = onToggleReader,
-                  modifier = Modifier
-                    .size(30.dp)
-                    .testTag("url_reader_mode_button")
-                ) {
-                  Icon(
-                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = "Toggle Reader Mode",
-                    tint = if (isReaderActive) ThemeCyber.colors.primary else ThemeCyber.colors.textMuted,
-                    modifier = Modifier.size(16.dp),
-                  )
-                }
-
-                // Bookmark Star Toggle
-                IconButton(
-                  onClick = onToggleBookmark,
-                  modifier = Modifier
-                    .size(30.dp)
-                    .testTag("url_bookmark_button")
-                ) {
-                  Icon(
-                    imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
-                    contentDescription = if (isBookmarked) "Bookmarked" else "Bookmark Page",
-                    tint = if (isBookmarked) ThemeCyber.colors.warningYellow else ThemeCyber.colors.textMuted,
-                    modifier = Modifier.size(16.dp),
-                  )
-                }
-              }
-
-              // Reload Button
-              IconButton(
-                onClick = onReload,
+                onClick = onToggleBookmark,
                 modifier = Modifier
                   .size(30.dp)
-                  .testTag("reload_button"),
+                  .testTag("url_bookmark_button")
               ) {
                 Icon(
-                  imageVector = Icons.Default.Refresh,
-                  contentDescription = "Reload page",
-                  tint = accentColor,
-                  modifier = Modifier.size(16.dp),
+                  imageVector = if (isBookmarked) Icons.Default.Star else Icons.Outlined.StarBorder,
+                  contentDescription = if (isBookmarked) "Bookmarked" else "Bookmark Page",
+                  tint = if (isBookmarked) ThemeCyber.colors.warningYellow else ThemeCyber.colors.textMuted,
+                  modifier = Modifier.size(18.dp),
                 )
               }
             }
           }
-        }
-
-        // Integrated Micro Loading Indicator at bottom edge of address bar capsule
-        if (isLoading) {
-          val infiniteTransition = rememberInfiniteTransition(label = "url_shimmer")
-          val shimmerAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.4f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-              animation = tween(700, easing = FastOutSlowInEasing),
-              repeatMode = RepeatMode.Reverse
-            ),
-            label = "shimmer_alpha"
-          )
-
-          Box(
-            modifier = Modifier
-              .align(Alignment.BottomCenter)
-              .fillMaxWidth()
-              .height(2.dp)
-              .clip(RoundedCornerShape(bottomStart = 23.dp, bottomEnd = 23.dp))
-              .background(
-                Brush.horizontalGradient(
-                  colors = listOf(
-                    accentColor.copy(alpha = 0.2f),
-                    accentColor.copy(alpha = shimmerAlpha),
-                    ThemeCyber.colors.secondary.copy(alpha = shimmerAlpha),
-                    accentColor.copy(alpha = 0.2f)
+          
+          // Integrated Micro Loading Indicator at bottom edge of address bar capsule
+          if (isLoading) {
+            val infiniteTransition = rememberInfiniteTransition(label = "url_shimmer")
+            val shimmerAlpha by infiniteTransition.animateFloat(
+              initialValue = 0.4f,
+              targetValue = 1f,
+              animationSpec = infiniteRepeatable(
+                animation = tween(700, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+              ),
+              label = "shimmer_alpha"
+            )
+            Box(
+              modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(2.dp)
+                .clip(RoundedCornerShape(bottomStart = 23.dp, bottomEnd = 23.dp))
+                .background(
+                  Brush.horizontalGradient(
+                    colors = listOf(
+                      accentColor.copy(alpha = 0.2f),
+                      accentColor.copy(alpha = shimmerAlpha),
+                      ThemeCyber.colors.secondary.copy(alpha = shimmerAlpha),
+                      accentColor.copy(alpha = 0.2f)
+                    )
                   )
                 )
-              )
+            )
+          }
+        }
+      }
+
+      // Outer action icons
+      if (!isInternalPage) {
+        IconButton(
+          onClick = onToggleReader,
+          modifier = Modifier.size(32.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.MenuBook,
+            contentDescription = "Toggle Reader Mode",
+            tint = if (isReaderActive) ThemeCyber.colors.primary else ThemeCyber.colors.textPrimary,
+            modifier = Modifier.size(20.dp),
           )
         }
+        IconButton(
+          onClick = onShareUrl,
+          modifier = Modifier.size(32.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.Share,
+            contentDescription = "Share",
+            tint = ThemeCyber.colors.textPrimary,
+            modifier = Modifier.size(20.dp),
+          )
+        }
+        IconButton(
+          onClick = onOpenSecurityPanel,
+          modifier = Modifier.size(32.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.VerifiedUser,
+            contentDescription = "Security",
+            tint = ThemeCyber.colors.textPrimary,
+            modifier = Modifier.size(20.dp),
+          )
+        }
+      }
+      IconButton(
+        onClick = onReload,
+        modifier = Modifier.size(32.dp)
+      ) {
+        Icon(
+          imageVector = Icons.Outlined.Refresh,
+          contentDescription = "Reload page",
+          tint = ThemeCyber.colors.textPrimary,
+          modifier = Modifier.size(20.dp),
+        )
       }
     }
 
@@ -598,6 +494,7 @@ fun TerminalUrlBar(
       exit = fadeOut() + shrinkVertically(),
     ) {
       copiedUrlPrompt?.let { copied ->
+
         Surface(
           shape = RoundedCornerShape(12.dp),
           color = ThemeCyber.colors.surface,

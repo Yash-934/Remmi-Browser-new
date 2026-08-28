@@ -525,7 +525,7 @@ fun NewTabPage(
                 )
                 Text(
                   text = copied,
-                  color = Color.White,
+                  color = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary,
                   fontSize = 12.5.sp,
                   maxLines = 1,
                   overflow = TextOverflow.Ellipsis
@@ -570,7 +570,7 @@ fun NewTabPage(
                 Icon(
                   Icons.Default.Close,
                   contentDescription = "Dismiss",
-                  tint = Color.White.copy(alpha = 0.6f),
+                  tint = if (hasCustomWallpaper) Color.White.copy(alpha = 0.7f) else ThemeCyber.colors.textMuted,
                   modifier = Modifier.size(14.dp)
                 )
               }
@@ -618,7 +618,7 @@ fun NewTabPage(
                   Column(modifier = Modifier.weight(1f)) {
                     Text(
                       text = bkmk.title.ifEmpty { bkmk.url },
-                      color = Color.White,
+                      color = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary,
                       fontSize = 13.sp,
                       fontWeight = FontWeight.Medium,
                       maxLines = 1,
@@ -626,7 +626,7 @@ fun NewTabPage(
                     )
                     Text(
                       text = bkmk.url,
-                      color = Color.White.copy(alpha = 0.6f),
+                      color = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textSecondary,
                       fontSize = 11.sp,
                       fontFamily = CyberMonoFamily,
                       maxLines = 1,
@@ -640,7 +640,7 @@ fun NewTabPage(
                     Icon(
                       Icons.Default.NorthWest,
                       contentDescription = "Fill",
-                      tint = Color.White.copy(alpha = 0.6f),
+                      tint = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textMuted,
                       modifier = Modifier.size(15.dp)
                     )
                   }
@@ -668,7 +668,7 @@ fun NewTabPage(
                   Column(modifier = Modifier.weight(1f)) {
                     Text(
                       text = hist.title.ifEmpty { hist.url },
-                      color = Color.White,
+                      color = if (hasCustomWallpaper) Color.White else ThemeCyber.colors.textPrimary,
                       fontSize = 13.sp,
                       fontWeight = FontWeight.Medium,
                       maxLines = 1,
@@ -676,7 +676,7 @@ fun NewTabPage(
                     )
                     Text(
                       text = hist.url,
-                      color = Color.White.copy(alpha = 0.6f),
+                      color = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textSecondary,
                       fontSize = 11.sp,
                       fontFamily = CyberMonoFamily,
                       maxLines = 1,
@@ -690,7 +690,7 @@ fun NewTabPage(
                     Icon(
                       Icons.Default.NorthWest,
                       contentDescription = "Fill",
-                      tint = Color.White.copy(alpha = 0.6f),
+                      tint = if (hasCustomWallpaper) Color.White.copy(alpha = 0.6f) else ThemeCyber.colors.textMuted,
                       modifier = Modifier.size(15.dp)
                     )
                   }

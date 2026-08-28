@@ -179,6 +179,7 @@ fun TabStrip(
 
 enum class TabFilter {
   ALL,
+  RECENT,
   ACTIVE,
   GROUPS,
   GHOST,
@@ -210,6 +211,7 @@ fun TabGridSheet(
 ) {
   var selectedFilter by remember { mutableStateOf(TabFilter.ALL) }
   var searchQuery by remember { mutableStateOf("") }
+  var selectedSpaceFilter by remember { mutableStateOf<String?>(null) } // null = all, "personal", "incognito", "tor", or groupId
 
   // Dialog States
   var showCreateGroupDialog by remember { mutableStateOf(false) }
@@ -217,173 +219,195 @@ fun TabGridSheet(
   var tabForGroupAssignment by remember { mutableStateOf<BrowserTab?>(null) }
   var tabOptionsTarget by remember { mutableStateOf<BrowserTab?>(null) }
 
-  // Quick stats
-  val totalCount = tabs.size
+  // Counts
+  val personalTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.SHIELD && it.groupId == null } }
+  val incognitoTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.INCOGNITO } }
+  val torTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.GHOST } }
   val inactiveTabs = remember(tabs) { tabs.filter { it.isInactive } }
   val activeOnlyTabs = remember(tabs) { tabs.filter { !it.isInactive } }
-  val ghostTabs = remember(tabs) { tabs.filter { it.profile == PrivacyProfile.GHOST } }
-  val inactiveCount = inactiveTabs.size
 
-  // Filtered Tabs according to filter chip and search query
-  val filteredTabs = remember(tabs, selectedFilter, searchQuery) {
-    val query = searchQuery.trim().lowercase()
-    val base = when (selectedFilter) {
-      TabFilter.ALL -> tabs
-      TabFilter.ACTIVE -> activeOnlyTabs
-      TabFilter.GROUPS -> tabs.filter { it.groupId != null }
-      TabFilter.GHOST -> ghostTabs
-      TabFilter.INACTIVE -> inactiveTabs
+  // Filtered & Sorted Tabs
+  val filteredTabs = remember(tabs, selectedFilter, selectedSpaceFilter, searchQuery) {
+    var list = when (selectedSpaceFilter) {
+      "personal" -> tabs.filter { it.profile == PrivacyProfile.SHIELD && it.groupId == null }
+      "incognito" -> incognitoTabs
+      "tor" -> torTabs
+      null -> tabs
+      else -> tabs.filter { it.groupId == selectedSpaceFilter }
     }
-    if (query.isEmpty()) {
-      base
-    } else {
-      base.filter {
+
+    list = when (selectedFilter) {
+      TabFilter.ALL -> list
+      TabFilter.RECENT -> list.sortedByDescending { it.lastAccessedAt }
+      TabFilter.ACTIVE -> list.filter { !it.isInactive }
+      TabFilter.GROUPS -> list.filter { it.groupId != null }
+      TabFilter.GHOST -> list.filter { it.profile == PrivacyProfile.GHOST }
+      TabFilter.INACTIVE -> list.filter { it.isInactive }
+    }
+
+    val query = searchQuery.trim().lowercase()
+    if (query.isNotEmpty()) {
+      list = list.filter {
         it.title.lowercase().contains(query) || it.url.lowercase().contains(query)
       }
     }
+    list
   }
 
   Column(
     modifier = Modifier
       .fillMaxSize()
       .background(ThemeCyber.colors.background)
+      .statusBarsPadding()
       .navigationBarsPadding()
-      .padding(horizontal = 14.dp, vertical = 10.dp)
+      .padding(horizontal = 14.dp, vertical = 6.dp)
   ) {
-    // 1. TOP HEADER BAR
+    // 1. DRAG HANDLE & BRAND HEADER BAR
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(bottom = 6.dp),
+      contentAlignment = Alignment.Center
+    ) {
+      Box(
+        modifier = Modifier
+          .width(38.dp)
+          .height(4.dp)
+          .clip(CircleShape)
+          .background(ThemeCyber.colors.textMuted.copy(alpha = 0.35f))
+      )
+    }
+
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .padding(bottom = 8.dp),
+        .padding(vertical = 4.dp),
       horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
+      verticalAlignment = Alignment.CenterVertically
     ) {
-      Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(
-            text = "TABS // [${tabs.size}]",
-            color = ThemeCyber.colors.primary,
-            fontFamily = CyberMonoFamily,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-          )
-          if (inactiveCount > 0) {
-            Spacer(modifier = Modifier.width(6.dp))
-            Surface(
-              shape = RoundedCornerShape(4.dp),
-              color = ThemeCyber.colors.textMuted.copy(alpha = 0.2f),
-              border = BorderStroke(0.6.dp, ThemeCyber.colors.textMuted)
-            ) {
-              Text(
-                text = "💤 $inactiveCount INACTIVE",
-                fontSize = 9.sp,
-                fontFamily = CyberMonoFamily,
-                fontWeight = FontWeight.Bold,
-                color = ThemeCyber.colors.textSecondary,
-                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-              )
-            }
+      // Brand Logo + Title
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = ThemeCyber.colors.primary.copy(alpha = 0.15f),
+          border = BorderStroke(1.dp, ThemeCyber.colors.primary.copy(alpha = 0.4f)),
+          modifier = Modifier.size(30.dp)
+        ) {
+          Box(contentAlignment = Alignment.Center) {
+            Text(
+              text = "R",
+              color = ThemeCyber.colors.primary,
+              fontFamily = CyberMonoFamily,
+              fontWeight = FontWeight.Black,
+              fontSize = 15.sp
+            )
           }
         }
+        Spacer(modifier = Modifier.width(8.dp))
         Text(
-          text = if (tabGroups.isNotEmpty()) "${tabGroups.size} Groups • Multi-Engine Active" else "Zero-Telemetry Isolated Sandbox",
-          color = ThemeCyber.colors.textMuted,
-          fontSize = 10.sp,
-          fontFamily = CyberMonoFamily,
+          text = "Remmi",
+          color = ThemeCyber.colors.textPrimary,
+          fontSize = 17.sp,
+          fontWeight = FontWeight.Bold,
+          fontFamily = CyberMonoFamily
         )
+        Spacer(modifier = Modifier.width(6.dp))
+        Surface(
+          shape = CircleShape,
+          color = ThemeCyber.colors.surfaceLight,
+          border = BorderStroke(0.6.dp, ThemeCyber.colors.surfaceBorder)
+        ) {
+          Text(
+            text = "${tabs.size}",
+            color = ThemeCyber.colors.textSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = CyberMonoFamily,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+          )
+        }
       }
 
+      // Top Actions: + New Tab & Close Button
       Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
       ) {
-        // Create Group Button
-        IconButton(
-          onClick = { showCreateGroupDialog = true },
+        // Quick + New Tab
+        Surface(
+          shape = RoundedCornerShape(10.dp),
+          color = ThemeCyber.colors.primary.copy(alpha = 0.15f),
+          border = BorderStroke(1.dp, ThemeCyber.colors.primary.copy(alpha = 0.5f)),
           modifier = Modifier
             .size(34.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(ThemeCyber.colors.surfaceLight)
-            .border(0.8.dp, ThemeCyber.colors.secondary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-            .testTag("new_tab_group_button"),
+            .clickable {
+              onNewTab(PrivacyProfile.SHIELD, null)
+              onDismiss()
+            }
+            .testTag("add_tab_button")
         ) {
-          Icon(
-            imageVector = Icons.Default.CreateNewFolder,
-            contentDescription = "New Tab Group",
-            tint = ThemeCyber.colors.secondary,
-            modifier = Modifier.size(18.dp),
-          )
+          Box(contentAlignment = Alignment.Center) {
+            Icon(
+              Icons.Default.Add,
+              contentDescription = "New Tab",
+              tint = ThemeCyber.colors.primary,
+              modifier = Modifier.size(18.dp)
+            )
+          }
         }
 
-        // Add Shield Tab
-        IconButton(
-          onClick = {
-            onNewTab(PrivacyProfile.SHIELD, null)
-            onDismiss()
-          },
+        // Close Sheet (X)
+        Surface(
+          shape = RoundedCornerShape(10.dp),
+          color = ThemeCyber.colors.surfaceLight,
+          border = BorderStroke(0.8.dp, ThemeCyber.colors.surfaceBorder),
           modifier = Modifier
             .size(34.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(ThemeCyber.colors.surfaceLight)
-            .border(0.8.dp, ThemeCyber.colors.primary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-            .testTag("add_tab_button"),
+            .clickable(onClick = onDismiss)
+            .testTag("close_tabs_sheet_button")
         ) {
-          Icon(
-            imageVector = Icons.Default.Add,
-            contentDescription = "New Tab",
-            tint = ThemeCyber.colors.primary,
-            modifier = Modifier.size(18.dp),
-          )
-        }
-
-        // Close Sheet
-        IconButton(
-          onClick = onDismiss,
-          modifier = Modifier
-            .size(34.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(ThemeCyber.colors.surfaceLight)
-            .testTag("close_tabs_sheet_button"),
-        ) {
-          Icon(
-            imageVector = Icons.Default.Close,
-            contentDescription = "Close Tabs",
-            tint = ThemeCyber.colors.textPrimary,
-            modifier = Modifier.size(18.dp),
-          )
+          Box(contentAlignment = Alignment.Center) {
+            Icon(
+              Icons.Default.Close,
+              contentDescription = "Close Tabs",
+              tint = ThemeCyber.colors.textPrimary,
+              modifier = Modifier.size(16.dp)
+            )
+          }
         }
       }
     }
 
-    // 2. SEARCH TABS INPUT
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // 2. SEARCH TABS AND SPACES INPUT BAR
     Surface(
-      shape = RoundedCornerShape(10.dp),
+      shape = RoundedCornerShape(22.dp),
       color = ThemeCyber.colors.surface,
-      border = BorderStroke(0.8.dp, ThemeCyber.colors.surfaceBorder),
+      border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
       modifier = Modifier
         .fillMaxWidth()
-        .height(40.dp)
+        .height(42.dp)
     ) {
       Row(
         modifier = Modifier
           .fillMaxSize()
-          .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+          .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
       ) {
         Icon(
           imageVector = Icons.Default.Search,
-          contentDescription = "Search Tabs",
-          tint = ThemeCyber.colors.textMuted,
-          modifier = Modifier.size(16.dp),
+          contentDescription = "Search Tabs and Spaces",
+          tint = ThemeCyber.colors.primary,
+          modifier = Modifier.size(17.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Box(modifier = Modifier.weight(1f)) {
           if (searchQuery.isEmpty()) {
             Text(
-              text = "Search tabs or domains...",
+              text = "Search Tabs and Spaces",
               color = ThemeCyber.colors.textMuted,
-              fontFamily = CyberMonoFamily,
-              fontSize = 12.sp,
+              fontSize = 12.5.sp,
             )
           }
           BasicTextField(
@@ -392,8 +416,8 @@ fun TabGridSheet(
             singleLine = true,
             textStyle = TextStyle(
               color = ThemeCyber.colors.textPrimary,
-              fontFamily = CyberMonoFamily,
-              fontSize = 12.5.sp,
+              fontSize = 13.sp,
+              fontWeight = FontWeight.Medium
             ),
             cursorBrush = SolidColor(ThemeCyber.colors.primary),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -416,71 +440,283 @@ fun TabGridSheet(
       }
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
-    // 3. FILTER CHIPS ROW
-    LazyRow(
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      item {
-        TabFilterChip(
-          title = "All (${tabs.size})",
-          isSelected = selectedFilter == TabFilter.ALL,
-          onClick = { selectedFilter = TabFilter.ALL }
-        )
-      }
-      item {
-        TabFilterChip(
-          title = "Active (${activeOnlyTabs.size})",
-          isSelected = selectedFilter == TabFilter.ACTIVE,
-          onClick = { selectedFilter = TabFilter.ACTIVE }
-        )
-      }
-      if (tabGroups.isNotEmpty()) {
-        item {
-          TabFilterChip(
-            title = "Groups (${tabGroups.size})",
-            isSelected = selectedFilter == TabFilter.GROUPS,
-            colorAccent = ThemeCyber.colors.secondary,
-            onClick = { selectedFilter = TabFilter.GROUPS }
-          )
-        }
-      }
-      if (ghostTabs.isNotEmpty()) {
-        item {
-          TabFilterChip(
-            title = "Tor (${ghostTabs.size})",
-            isSelected = selectedFilter == TabFilter.GHOST,
-            colorAccent = ThemeCyber.colors.torPurple,
-            onClick = { selectedFilter = TabFilter.GHOST }
-          )
-        }
-      }
-      item {
-        TabFilterChip(
-          title = "💤 Inactive (${inactiveCount})",
-          isSelected = selectedFilter == TabFilter.INACTIVE,
-          colorAccent = Color(0xFF9E9E9E),
-          onClick = { selectedFilter = TabFilter.INACTIVE }
-        )
-      }
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    // 4. MAIN CONTENT (GROUPS & TABS GRID)
+    // 3. MAIN SCROLLABLE CONTENT (SPACES + CHIPS + TABS)
     LazyColumn(
       modifier = Modifier
         .weight(1f)
         .fillMaxWidth(),
-      verticalArrangement = Arrangement.spacedBy(14.dp),
+      verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-      // Inactive Banner / Bulk Action when viewing Inactive Filter
+      // SPACES SECTION
+      item {
+        Column(modifier = Modifier.fillMaxWidth()) {
+          // Spaces Header
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 2.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "SPACES",
+              color = ThemeCyber.colors.textPrimary,
+              fontSize = 13.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 0.8.sp
+            )
+            if (tabGroups.isNotEmpty() || personalTabs.isNotEmpty() || incognitoTabs.isNotEmpty() || torTabs.isNotEmpty()) {
+              Text(
+                text = if (selectedSpaceFilter != null) "Show All" else "Manage",
+                color = ThemeCyber.colors.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                  .clickable {
+                    if (selectedSpaceFilter != null) selectedSpaceFilter = null else showCreateGroupDialog = true
+                  }
+                  .padding(4.dp)
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Spaces Horizontal Scroll Cards
+          LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            // 1. Personal Space Card
+            item {
+              SpaceCard(
+                title = "Personal Space",
+                count = personalTabs.size,
+                isSelected = selectedSpaceFilter == "personal",
+                icon = {
+                  Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF007AFF),
+                    modifier = Modifier.size(24.dp)
+                  )
+                },
+                accentColor = Color(0xFF007AFF),
+                onClick = {
+                  selectedSpaceFilter = if (selectedSpaceFilter == "personal") null else "personal"
+                }
+              )
+            }
+
+            // 2. Incognito Space Card
+            item {
+              SpaceCard(
+                title = "Incognito Space",
+                count = incognitoTabs.size,
+                isSelected = selectedSpaceFilter == "incognito",
+                icon = {
+                  Icon(
+                    painter = painterResource(R.drawable.ic_incognito),
+                    contentDescription = null,
+                    tint = Color(0xFF8E8E93),
+                    modifier = Modifier.size(22.dp)
+                  )
+                },
+                accentColor = Color(0xFF8E8E93),
+                onClick = {
+                  selectedSpaceFilter = if (selectedSpaceFilter == "incognito") null else "incognito"
+                }
+              )
+            }
+
+            // 3. Tor Space Card
+            item {
+              SpaceCard(
+                title = "Tor Space",
+                count = torTabs.size,
+                isSelected = selectedSpaceFilter == "tor",
+                icon = {
+                  Icon(
+                    imageVector = Icons.Default.VpnKey,
+                    contentDescription = null,
+                    tint = ThemeCyber.colors.torPurple,
+                    modifier = Modifier.size(22.dp)
+                  )
+                },
+                accentColor = ThemeCyber.colors.torPurple,
+                onClick = {
+                  selectedSpaceFilter = if (selectedSpaceFilter == "tor") null else "tor"
+                }
+              )
+            }
+
+            // 4. Custom User Groups / Spaces
+            items(tabGroups, key = { it.id }) { group ->
+              val groupCount = tabs.count { it.groupId == group.id }
+              val groupColor = Color(group.colorHex)
+              SpaceCard(
+                title = group.title,
+                count = groupCount,
+                isSelected = selectedSpaceFilter == group.id,
+                icon = {
+                  Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = groupColor,
+                    modifier = Modifier.size(24.dp)
+                  )
+                },
+                accentColor = groupColor,
+                onClick = {
+                  selectedSpaceFilter = if (selectedSpaceFilter == group.id) null else group.id
+                },
+                onLongClick = { editingGroup = group }
+              )
+            }
+
+            // 5. + New Space Card
+            item {
+              Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = ThemeCyber.colors.surfaceLight,
+                border = BorderStroke(1.2.dp, ThemeCyber.colors.primary.copy(alpha = 0.35f)),
+                modifier = Modifier
+                  .width(105.dp)
+                  .height(84.dp)
+                  .clickable { showCreateGroupDialog = true }
+              ) {
+                Column(
+                  modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.Center
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New Space",
+                    tint = ThemeCyber.colors.primary,
+                    modifier = Modifier.size(22.dp)
+                  )
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(
+                    text = "+ New Space",
+                    color = ThemeCyber.colors.primary,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // FILTER CHIPS ROW (All, Recent, Active, Sleep)
+      item {
+        LazyRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          item {
+            ModernFilterChip(
+              title = "All",
+              count = tabs.size,
+              icon = Icons.Default.GridView,
+              isSelected = selectedFilter == TabFilter.ALL,
+              onClick = { selectedFilter = TabFilter.ALL }
+            )
+          }
+          item {
+            ModernFilterChip(
+              title = "Recent",
+              icon = Icons.Default.Schedule,
+              isSelected = selectedFilter == TabFilter.RECENT,
+              onClick = { selectedFilter = TabFilter.RECENT }
+            )
+          }
+          item {
+            ModernFilterChip(
+              title = "Active",
+              count = activeOnlyTabs.size,
+              icon = Icons.Default.CheckCircle,
+              colorAccent = ThemeCyber.colors.successGreen,
+              isSelected = selectedFilter == TabFilter.ACTIVE,
+              onClick = { selectedFilter = TabFilter.ACTIVE }
+            )
+          }
+          item {
+            ModernFilterChip(
+              title = "Sleep",
+              count = inactiveTabs.size,
+              icon = Icons.Default.Bedtime,
+              colorAccent = ThemeCyber.colors.warningYellow,
+              isSelected = selectedFilter == TabFilter.INACTIVE,
+              onClick = { selectedFilter = TabFilter.INACTIVE }
+            )
+          }
+        }
+      }
+
+      // ALL TABS SECTION HEADER
+      item {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = if (selectedSpaceFilter != null) "FILTERED TABS" else "ALL TABS",
+              color = ThemeCyber.colors.textPrimary,
+              fontSize = 13.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 0.8.sp
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = ThemeCyber.colors.primary.copy(alpha = 0.15f),
+              border = BorderStroke(0.6.dp, ThemeCyber.colors.primary.copy(alpha = 0.3f))
+            ) {
+              Text(
+                text = "${filteredTabs.size}",
+                color = ThemeCyber.colors.primary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = CyberMonoFamily,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+              )
+            }
+          }
+
+          if (tabs.isNotEmpty()) {
+            Text(
+              text = "Close All",
+              color = ThemeCyber.colors.dangerRed,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.SemiBold,
+              modifier = Modifier
+                .clickable {
+                  onCloseAllTabs()
+                  onDismiss()
+                }
+                .padding(4.dp)
+            )
+          }
+        }
+      }
+
+      // INACTIVE SLEEP BANNER (when viewing sleep filter)
       if (selectedFilter == TabFilter.INACTIVE && inactiveTabs.isNotEmpty()) {
         item {
           Surface(
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(12.dp),
             color = ThemeCyber.colors.surfaceLight,
             border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
             modifier = Modifier.fillMaxWidth()
@@ -494,23 +730,21 @@ fun TabGridSheet(
             ) {
               Column(modifier = Modifier.weight(1f)) {
                 Text(
-                  text = "💤 Dormant / Inactive Tabs",
+                  text = "💤 Dormant / Sleeping Tabs",
                   color = ThemeCyber.colors.textPrimary,
-                  fontSize = 13.sp,
+                  fontSize = 12.5.sp,
                   fontWeight = FontWeight.Bold,
-                  fontFamily = CyberMonoFamily
                 )
                 Text(
-                  text = "These tabs are unloaded to save battery, RAM & Tor circuits.",
+                  text = "Unloaded to save battery and RAM.",
                   color = ThemeCyber.colors.textMuted,
-                  fontSize = 10.sp,
-                  fontFamily = CyberMonoFamily
+                  fontSize = 10.5.sp,
                 )
               }
               Button(
                 onClick = onCloseAllInactiveTabs,
                 colors = ButtonDefaults.buttonColors(
-                  containerColor = ThemeCyber.colors.dangerRed.copy(alpha = 0.25f),
+                  containerColor = ThemeCyber.colors.dangerRed.copy(alpha = 0.2f),
                   contentColor = ThemeCyber.colors.dangerRed
                 ),
                 shape = RoundedCornerShape(8.dp),
@@ -519,8 +753,7 @@ fun TabGridSheet(
                 Text(
                   text = "Close All",
                   fontSize = 11.sp,
-                  fontWeight = FontWeight.Bold,
-                  fontFamily = CyberMonoFamily
+                  fontWeight = FontWeight.Bold
                 )
               }
             }
@@ -528,109 +761,43 @@ fun TabGridSheet(
         }
       }
 
-      // Grouped Sections (When showing ALL, ACTIVE, or GROUPS)
-      if (selectedFilter != TabFilter.INACTIVE && tabGroups.isNotEmpty()) {
-        val groupsToShow = if (selectedFilter == TabFilter.ACTIVE) {
-          tabGroups.filter { !it.isInactive }
-        } else {
-          tabGroups
-        }
+      // TAB GRID ITEMS (2 COLUMNS)
+      if (filteredTabs.isNotEmpty()) {
+        val chunkedTabs = filteredTabs.chunked(2)
+        items(chunkedTabs) { row ->
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
+            for (tab in row) {
+              val originalIndex = tabs.indexOfFirst { it.id == tab.id }
+              val isActive = originalIndex == activeIndex
+              val group = tabGroups.find { it.id == tab.groupId }
+              val groupColor = group?.let { Color(it.colorHex) }
 
-        items(groupsToShow, key = { it.id }) { group ->
-          val groupColor = Color(group.colorHex)
-          val groupTabs = filteredTabs.filter { it.groupId == group.id }
-
-          if (groupTabs.isNotEmpty() || selectedFilter == TabFilter.GROUPS) {
-            TabGroupSection(
-              group = group,
-              groupTabs = groupTabs,
-              tabs = tabs,
-              activeIndex = activeIndex,
-              onTabSelect = { id ->
-                val idx = tabs.indexOfFirst { it.id == id }
-                if (idx >= 0) {
-                  onTabSelect(idx)
-                  onDismiss()
-                }
-              },
-              onTabClose = onTabClose,
-              onToggleCollapse = { onToggleGroupCollapse(group.id) },
-              onEditGroup = { editingGroup = group },
-              onDeleteGroup = { closeTabs -> onDeleteGroup(group.id, closeTabs) },
-              onNewTabInGroup = {
-                onNewTab(PrivacyProfile.SHIELD, group.id)
-                onDismiss()
-              },
-              onTabOptions = { tabOptionsTarget = it }
-            )
-          }
-        }
-      }
-
-      // Ungrouped / Remaining Tabs Grid
-      val ungroupedTabs = if (tabGroups.isNotEmpty() && selectedFilter != TabFilter.INACTIVE) {
-        filteredTabs.filter { it.groupId == null }
-      } else {
-        filteredTabs
-      }
-
-      if (ungroupedTabs.isNotEmpty()) {
-        if (tabGroups.isNotEmpty() && selectedFilter != TabFilter.INACTIVE) {
-          item {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-            ) {
-              Text(
-                text = "STANDALONE TABS (${ungroupedTabs.size})",
-                color = ThemeCyber.colors.textSecondary,
-                fontSize = 10.5.sp,
-                fontFamily = CyberMonoFamily,
-                fontWeight = FontWeight.Bold
-              )
-            }
-          }
-        }
-
-        item {
-          val chunkedTabs = ungroupedTabs.chunked(2)
-          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            for (row in chunkedTabs) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-              ) {
-                for (tab in row) {
-                  val originalIndex = tabs.indexOfFirst { it.id == tab.id }
-                  val isActive = originalIndex == activeIndex
-
-                  Box(modifier = Modifier.weight(1f)) {
-                    EnhancedTabCard(
-                      tab = tab,
-                      isActive = isActive,
-                      groupColor = null,
-                      onSelect = {
-                        if (originalIndex >= 0) {
-                          onTabSelect(originalIndex)
-                          onDismiss()
-                        }
-                      },
-                      onClose = { onTabClose(tab.id) },
-                      onOptions = { tabOptionsTarget = tab }
-                    )
-                  }
-                }
-                if (row.size == 1) {
-                  Spacer(modifier = Modifier.weight(1f))
-                }
+              Box(modifier = Modifier.weight(1f)) {
+                ModernTabCard(
+                  tab = tab,
+                  isActive = isActive,
+                  groupColor = groupColor,
+                  onSelect = {
+                    if (originalIndex >= 0) {
+                      onTabSelect(originalIndex)
+                      onDismiss()
+                    }
+                  },
+                  onClose = { onTabClose(tab.id) },
+                  onOptions = { tabOptionsTarget = tab }
+                )
               }
             }
+            if (row.size == 1) {
+              Spacer(modifier = Modifier.weight(1f))
+            }
           }
         }
-      }
-
-      // Empty State
-      if (filteredTabs.isEmpty()) {
+      } else {
+        // Empty State
         item {
           Box(
             modifier = Modifier
@@ -643,13 +810,12 @@ fun TabGridSheet(
                 imageVector = Icons.Default.TabUnselected,
                 contentDescription = null,
                 tint = ThemeCyber.colors.textMuted,
-                modifier = Modifier.size(42.dp)
+                modifier = Modifier.size(44.dp)
               )
               Spacer(modifier = Modifier.height(10.dp))
               Text(
-                text = if (searchQuery.isNotEmpty()) "No matching tabs found" else "No tabs in this section",
+                text = if (searchQuery.isNotEmpty()) "No matching tabs found" else "No tabs in this space",
                 color = ThemeCyber.colors.textMuted,
-                fontFamily = CyberMonoFamily,
                 fontSize = 13.sp
               )
             }
@@ -658,8 +824,8 @@ fun TabGridSheet(
       }
     }
 
-    // 5. BOTTOM BAR (Quick Actions: Incognito, Tor, Close All)
-    Spacer(modifier = Modifier.height(8.dp))
+    // 4. BOTTOM ACTION BAR (Incognito, Tor, Close All)
+    Spacer(modifier = Modifier.height(6.dp))
     HorizontalDivider(color = ThemeCyber.colors.surfaceBorder.copy(alpha = 0.5f))
     Spacer(modifier = Modifier.height(8.dp))
 
@@ -669,15 +835,16 @@ fun TabGridSheet(
       verticalAlignment = Alignment.CenterVertically
     ) {
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Quick Incognito
+        // Quick Incognito Button
         OutlinedButton(
           onClick = {
             onNewTab(PrivacyProfile.INCOGNITO, null)
             onDismiss()
           },
-          border = BorderStroke(0.8.dp, ThemeCyber.colors.surfaceBorder),
-          shape = RoundedCornerShape(8.dp),
-          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+          border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
+          colors = ButtonDefaults.outlinedButtonColors(containerColor = ThemeCyber.colors.surface),
+          shape = RoundedCornerShape(10.dp),
+          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
         ) {
           Icon(
             painter = painterResource(R.drawable.ic_incognito),
@@ -688,21 +855,22 @@ fun TabGridSheet(
           Spacer(modifier = Modifier.width(6.dp))
           Text(
             text = "Incognito",
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             color = ThemeCyber.colors.textPrimary,
-            fontFamily = CyberMonoFamily
+            fontWeight = FontWeight.Medium
           )
         }
 
-        // Quick Ghost / Tor
+        // Quick Tor Tab
         OutlinedButton(
           onClick = {
             onNewTab(PrivacyProfile.GHOST, null)
             onDismiss()
           },
-          border = BorderStroke(0.8.dp, ThemeCyber.colors.torPurple.copy(alpha = 0.6f)),
-          shape = RoundedCornerShape(8.dp),
-          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+          border = BorderStroke(1.dp, ThemeCyber.colors.torPurple.copy(alpha = 0.6f)),
+          colors = ButtonDefaults.outlinedButtonColors(containerColor = ThemeCyber.colors.torPurple.copy(alpha = 0.08f)),
+          shape = RoundedCornerShape(10.dp),
+          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
         ) {
           Icon(
             imageVector = Icons.Default.VpnKey,
@@ -713,14 +881,14 @@ fun TabGridSheet(
           Spacer(modifier = Modifier.width(6.dp))
           Text(
             text = "Tor",
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             color = ThemeCyber.colors.torPurple,
-            fontFamily = CyberMonoFamily
+            fontWeight = FontWeight.Bold
           )
         }
       }
 
-      // Close All Tabs
+      // Close All Tabs Action
       TextButton(
         onClick = {
           onCloseAllTabs()
@@ -730,9 +898,8 @@ fun TabGridSheet(
       ) {
         Text(
           text = "Close All",
-          fontSize = 11.sp,
-          fontWeight = FontWeight.Bold,
-          fontFamily = CyberMonoFamily
+          fontSize = 12.5.sp,
+          fontWeight = FontWeight.Bold
         )
       }
     }
@@ -768,7 +935,7 @@ fun TabGridSheet(
     )
   }
 
-  // 3. Tab Options Bottom Sheet / Dialog (Pin, Sleep, Move to Group, Duplicate)
+  // 3. Tab Options Bottom Sheet
   tabOptionsTarget?.let { tab ->
     TabActionSheet(
       tab = tab,
@@ -803,176 +970,127 @@ fun TabGridSheet(
 }
 
 // -------------------------------------------------------------
-// TAB GROUP SECTION COMPONENT
+// SPACE CARD (Personal, Incognito, Tor, Custom Groups)
 // -------------------------------------------------------------
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TabGroupSection(
-  group: TabGroup,
-  groupTabs: List<BrowserTab>,
-  tabs: List<BrowserTab>,
-  activeIndex: Int,
-  onTabSelect: (String) -> Unit,
-  onTabClose: (String) -> Unit,
-  onToggleCollapse: () -> Unit,
-  onEditGroup: () -> Unit,
-  onDeleteGroup: (closeTabs: Boolean) -> Unit,
-  onNewTabInGroup: () -> Unit,
-  onTabOptions: (BrowserTab) -> Unit,
+private fun SpaceCard(
+  title: String,
+  count: Int,
+  isSelected: Boolean,
+  icon: @Composable () -> Unit,
+  accentColor: Color,
+  onClick: () -> Unit,
+  onLongClick: (() -> Unit)? = null,
 ) {
-  val groupColor = Color(group.colorHex)
-
-  Column(
+  Surface(
+    shape = RoundedCornerShape(14.dp),
+    color = if (isSelected) accentColor.copy(alpha = 0.15f) else ThemeCyber.colors.surface,
+    border = BorderStroke(
+      width = if (isSelected) 1.8.dp else 1.dp,
+      color = if (isSelected) accentColor else ThemeCyber.colors.surfaceBorder
+    ),
     modifier = Modifier
-      .fillMaxWidth()
-      .clip(RoundedCornerShape(12.dp))
-      .background(ThemeCyber.colors.surface.copy(alpha = 0.9f))
-      .border(1.2.dp, groupColor.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
-      .padding(10.dp)
+      .width(105.dp)
+      .height(84.dp)
+      .combinedClickable(
+        onClick = onClick,
+        onLongClick = onLongClick
+      )
   ) {
-    // Group Header
-    Row(
+    Column(
       modifier = Modifier
-        .fillMaxWidth()
-        .clickable { onToggleCollapse() }
-        .padding(vertical = 4.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween
+        .fillMaxSize()
+        .padding(horizontal = 6.dp, vertical = 8.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.SpaceBetween
     ) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-          modifier = Modifier
-            .size(12.dp)
-            .clip(CircleShape)
-            .background(groupColor)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
+      Box(
+        modifier = Modifier
+          .size(30.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        icon()
+      }
+
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-          text = group.title.uppercase(),
-          color = groupColor,
-          fontFamily = CyberMonoFamily,
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Bold,
+          text = title,
+          color = if (isSelected) accentColor else ThemeCyber.colors.textPrimary,
+          fontSize = 11.sp,
+          fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.width(6.dp))
-        Surface(
-          shape = RoundedCornerShape(10.dp),
-          color = groupColor.copy(alpha = 0.2f),
-          border = BorderStroke(0.5.dp, groupColor.copy(alpha = 0.5f))
-        ) {
-          Text(
-            text = "${groupTabs.size}",
-            color = groupColor,
-            fontFamily = CyberMonoFamily,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-          )
-        }
-      }
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        // Add tab in group
-        IconButton(
-          onClick = onNewTabInGroup,
-          modifier = Modifier.size(26.dp)
-        ) {
-          Icon(
-            Icons.Default.Add,
-            contentDescription = "Add tab to group",
-            tint = groupColor,
-            modifier = Modifier.size(16.dp)
-          )
-        }
-
-        // Edit Group
-        IconButton(
-          onClick = onEditGroup,
-          modifier = Modifier.size(26.dp)
-        ) {
-          Icon(
-            Icons.Default.MoreVert,
-            contentDescription = "Group Settings",
-            tint = ThemeCyber.colors.textMuted,
-            modifier = Modifier.size(16.dp)
-          )
-        }
-
-        // Collapse / Expand Indicator
-        Icon(
-          imageVector = if (group.isCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-          contentDescription = if (group.isCollapsed) "Expand" else "Collapse",
-          tint = ThemeCyber.colors.textMuted,
-          modifier = Modifier.size(20.dp)
+        Text(
+          text = if (count == 1) "1 Tab" else "$count Tabs",
+          color = if (isSelected) accentColor.copy(alpha = 0.85f) else ThemeCyber.colors.textMuted,
+          fontSize = 9.5.sp,
+          fontWeight = FontWeight.Normal
         )
-      }
-    }
-
-    // Group Tabs Grid (when not collapsed)
-    AnimatedVisibility(
-      visible = !group.isCollapsed,
-      enter = fadeIn() + expandVertically(),
-      exit = fadeOut() + shrinkVertically()
-    ) {
-      if (groupTabs.isEmpty()) {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-          contentAlignment = Alignment.Center
-        ) {
-          Text(
-            text = "Group is empty. Tap + to open tab.",
-            color = ThemeCyber.colors.textMuted,
-            fontSize = 11.sp,
-            fontFamily = CyberMonoFamily
-          )
-        }
-      } else {
-        val chunkedTabs = groupTabs.chunked(2)
-        Column(
-          modifier = Modifier.padding(top = 8.dp),
-          verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          for (row in chunkedTabs) {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-              for (tab in row) {
-                val originalIndex = tabs.indexOfFirst { it.id == tab.id }
-                val isActive = originalIndex == activeIndex
-
-                Box(modifier = Modifier.weight(1f)) {
-                  EnhancedTabCard(
-                    tab = tab,
-                    isActive = isActive,
-                    groupColor = groupColor,
-                    onSelect = { onTabSelect(tab.id) },
-                    onClose = { onTabClose(tab.id) },
-                    onOptions = { onTabOptions(tab) }
-                  )
-                }
-              }
-              if (row.size == 1) {
-                Spacer(modifier = Modifier.weight(1f))
-              }
-            }
-          }
-        }
       }
     }
   }
 }
 
 // -------------------------------------------------------------
-// ENHANCED TAB CARD WITH WEBSITE PREVIEW THUMBNAIL
+// MODERN FILTER CHIP
+// -------------------------------------------------------------
+
+@Composable
+private fun ModernFilterChip(
+  title: String,
+  count: Int? = null,
+  icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+  colorAccent: Color = ThemeCyber.colors.primary,
+  isSelected: Boolean,
+  onClick: () -> Unit,
+) {
+  Surface(
+    shape = RoundedCornerShape(18.dp),
+    color = if (isSelected) colorAccent.copy(alpha = 0.15f) else ThemeCyber.colors.surface,
+    border = BorderStroke(
+      width = if (isSelected) 1.2.dp else 0.8.dp,
+      color = if (isSelected) colorAccent else ThemeCyber.colors.surfaceBorder
+    ),
+    modifier = Modifier
+      .height(32.dp)
+      .clickable(onClick = onClick)
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxHeight()
+        .padding(horizontal = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+      if (icon != null) {
+        Icon(
+          imageVector = icon,
+          contentDescription = null,
+          tint = if (isSelected) colorAccent else ThemeCyber.colors.textSecondary,
+          modifier = Modifier.size(14.dp)
+        )
+      }
+      Text(
+        text = if (count != null) "$title ($count)" else title,
+        color = if (isSelected) colorAccent else ThemeCyber.colors.textSecondary,
+        fontSize = 11.5.sp,
+        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+      )
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// REDESIGNED 2-COLUMN MODERN TAB CARD
 // -------------------------------------------------------------
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EnhancedTabCard(
+private fun ModernTabCard(
   tab: BrowserTab,
   isActive: Boolean,
   groupColor: Color?,
@@ -983,7 +1101,7 @@ private fun EnhancedTabCard(
   val context = LocalContext.current
   val profileColor = when (tab.profile) {
     PrivacyProfile.GHOST -> ThemeCyber.colors.torPurple
-    PrivacyProfile.INCOGNITO -> Color(0xFFE0E0E0)
+    PrivacyProfile.INCOGNITO -> Color(0xFF8E8E93)
     else -> groupColor ?: ThemeCyber.colors.primary
   }
 
@@ -991,7 +1109,7 @@ private fun EnhancedTabCard(
   val cleanDomain = remember(tab.url) {
     try {
       val uri = android.net.Uri.parse(tab.url)
-      uri.host?.removePrefix("www.") ?: if (isBlankOrNewTab) "netrunner:~$ home" else tab.url
+      uri.host?.removePrefix("www.") ?: if (isBlankOrNewTab) "New Tab" else tab.url
     } catch (_: Exception) {
       tab.url
     }
@@ -1003,9 +1121,9 @@ private fun EnhancedTabCard(
 
   Card(
     colors = CardDefaults.cardColors(containerColor = ThemeCyber.colors.surface),
-    shape = RoundedCornerShape(10.dp),
+    shape = RoundedCornerShape(14.dp),
     border = BorderStroke(
-      width = if (isActive) 1.6.dp else 0.8.dp,
+      width = if (isActive) 1.8.dp else 1.dp,
       color = if (isActive) profileColor else (groupColor?.copy(alpha = 0.6f) ?: ThemeCyber.colors.surfaceBorder)
     ),
     modifier = Modifier
@@ -1023,7 +1141,7 @@ private fun EnhancedTabCard(
           if (isActive) {
             Brush.verticalGradient(
               colors = listOf(
-                profileColor.copy(alpha = 0.12f),
+                profileColor.copy(alpha = 0.09f),
                 ThemeCyber.colors.surface
               )
             )
@@ -1032,12 +1150,12 @@ private fun EnhancedTabCard(
           }
         )
     ) {
-      // 1. CARD TOP BAR (Favicon, Domain, Security, Options, Close)
+      // 1. CARD TOP HEADER (Dot Status, Favicon / Title, 3-dots Menu)
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .background(ThemeCyber.colors.surfaceLight.copy(alpha = 0.8f))
-          .padding(horizontal = 8.dp, vertical = 6.dp),
+          .background(ThemeCyber.colors.surfaceLight.copy(alpha = 0.6f))
+          .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
       ) {
@@ -1045,193 +1163,124 @@ private fun EnhancedTabCard(
           verticalAlignment = Alignment.CenterVertically,
           modifier = Modifier.weight(1f)
         ) {
-          // Favicon or Incognito/Tor badge
-          if (tab.profile == PrivacyProfile.INCOGNITO) {
-            Icon(
-              painter = painterResource(R.drawable.ic_incognito),
-              contentDescription = "Incognito",
-              tint = ThemeCyber.colors.textPrimary,
-              modifier = Modifier.size(13.dp)
-            )
-          } else if (isBlankOrNewTab) {
-            Icon(
-              imageVector = Icons.Default.Public,
-              contentDescription = null,
-              tint = profileColor,
-              modifier = Modifier.size(13.dp)
-            )
-          } else {
-            AsyncImage(
-              model = ImageRequest.Builder(context)
-                .data(faviconUrl)
-                .crossfade(true)
-                .build(),
-              contentDescription = null,
-              modifier = Modifier
-                .size(14.dp)
-                .clip(CircleShape),
-              error = painterResource(R.drawable.remmi_logo),
-              placeholder = painterResource(R.drawable.remmi_logo)
-            )
-          }
-
+          // Status Dot (Red/Cyan/Green/Purple)
+          Box(
+            modifier = Modifier
+              .size(7.dp)
+              .clip(CircleShape)
+              .background(
+                if (tab.profile == PrivacyProfile.GHOST) ThemeCyber.colors.torPurple
+                else if (isActive) ThemeCyber.colors.dangerRed
+                else profileColor
+              )
+          )
           Spacer(modifier = Modifier.width(6.dp))
 
+          // Tab Title / Domain
           Text(
-            text = cleanDomain,
+            text = tab.title.ifEmpty { cleanDomain },
             color = ThemeCyber.colors.textPrimary,
-            fontFamily = CyberMonoFamily,
-            fontSize = 10.5.sp,
+            fontSize = 11.5.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
           )
-
-          if (tab.isPinned) {
-            Spacer(modifier = Modifier.width(4.dp))
-            Icon(
-              imageVector = Icons.Default.PushPin,
-              contentDescription = "Pinned",
-              tint = ThemeCyber.colors.warningYellow,
-              modifier = Modifier.size(11.dp)
-            )
-          }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          // Tab Options
-          IconButton(
-            onClick = onOptions,
-            modifier = Modifier.size(20.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Default.MoreVert,
-              contentDescription = "Options",
-              tint = ThemeCyber.colors.textMuted,
-              modifier = Modifier.size(13.dp)
-            )
-          }
-
-          // Close Tab Button
-          IconButton(
-            onClick = onClose,
-            modifier = Modifier.size(20.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Default.Close,
-              contentDescription = "Close",
-              tint = ThemeCyber.colors.textSecondary,
-              modifier = Modifier.size(13.dp)
-            )
-          }
+        // 3-dots Overflow Menu
+        IconButton(
+          onClick = onOptions,
+          modifier = Modifier.size(22.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Default.MoreVert,
+            contentDescription = "Options",
+            tint = ThemeCyber.colors.textSecondary,
+            modifier = Modifier.size(15.dp)
+          )
         }
       }
 
-      // 2. WEBSITE PREVIEW THUMBNAIL CONTAINER
+      // 2. WEBSITE PREVIEW SKELETON CANVAS
       Box(
         modifier = Modifier
           .fillMaxWidth()
           .weight(1f)
-          .padding(6.dp)
-          .clip(RoundedCornerShape(6.dp))
-          .background(ThemeCyber.colors.backgroundDarker)
-          .border(0.6.dp, ThemeCyber.colors.surfaceBorder.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
+          .padding(horizontal = 8.dp, vertical = 6.dp)
+          .clip(RoundedCornerShape(8.dp))
+          .background(ThemeCyber.colors.backgroundDarker.copy(alpha = 0.5f))
+          .border(0.6.dp, ThemeCyber.colors.surfaceBorder.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
       ) {
         if (isBlankOrNewTab) {
-          // New Tab / Dashboard Preview
+          // New Tab Canvas
           Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(6.dp)
+            modifier = Modifier.padding(4.dp)
           ) {
             Icon(
               imageVector = Icons.Default.Shield,
               contentDescription = null,
               tint = profileColor.copy(alpha = 0.7f),
-              modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-              text = "NETRUNNER // HOME",
-              color = profileColor,
-              fontFamily = CyberMonoFamily,
-              fontSize = 9.sp,
-              fontWeight = FontWeight.Bold
-            )
-            Text(
-              text = "Hardened Stealth Canvas",
-              color = ThemeCyber.colors.textMuted,
-              fontSize = 8.sp,
-              fontFamily = CyberMonoFamily
-            )
-          }
-        } else if (tab.profile == PrivacyProfile.GHOST) {
-          // Tor / Ghost Preview Thumbnail
-          Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(6.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Default.VpnKey,
-              contentDescription = null,
-              tint = ThemeCyber.colors.torPurple.copy(alpha = 0.8f),
               modifier = Modifier.size(22.dp)
             )
             Spacer(modifier = Modifier.height(3.dp))
             Text(
-              text = tab.title.ifEmpty { cleanDomain },
-              color = Color.White,
-              fontSize = 9.5.sp,
+              text = "Remmi Home",
+              color = profileColor,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold
+            )
+          }
+        } else if (tab.profile == PrivacyProfile.GHOST) {
+          // Tor Canvas
+          Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(4.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Default.VpnKey,
+              contentDescription = null,
+              tint = ThemeCyber.colors.torPurple,
+              modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+              text = cleanDomain,
+              color = ThemeCyber.colors.textPrimary,
+              fontSize = 10.sp,
               fontWeight = FontWeight.Bold,
-              maxLines = 2,
-              textAlign = TextAlign.Center,
+              maxLines = 1,
               overflow = TextOverflow.Ellipsis
             )
             Text(
-              text = "3-Hop Onion Circuit",
+              text = "Onion Circuit",
               color = ThemeCyber.colors.torPurple,
-              fontSize = 8.sp,
-              fontFamily = CyberMonoFamily
+              fontSize = 8.5.sp,
             )
           }
         } else {
-          // Active Website Preview Canvas Card
+          // Preview Wireframe with Site Title
           Column(
             modifier = Modifier
               .fillMaxSize()
               .padding(8.dp),
             verticalArrangement = Arrangement.SpaceBetween
           ) {
-            // Fake Web Title Banner
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Box(
-                modifier = Modifier
-                  .size(6.dp)
-                  .clip(CircleShape)
-                  .background(profileColor)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = tab.title.ifEmpty { cleanDomain },
-                color = ThemeCyber.colors.textPrimary,
-                fontFamily = CyberMonoFamily,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-              )
-            }
+            Text(
+              text = tab.title.ifEmpty { cleanDomain },
+              color = ThemeCyber.colors.textPrimary,
+              fontSize = 10.5.sp,
+              fontWeight = FontWeight.Medium,
+              maxLines = 2,
+              overflow = TextOverflow.Ellipsis
+            )
 
-            // Stylized Website Visual Body (Preview Skeleton lines)
+            // Stylized Website Visual Lines
             Column(
               verticalArrangement = Arrangement.spacedBy(3.dp),
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 2.dp)
+              modifier = Modifier.fillMaxWidth()
             ) {
               Box(
                 modifier = Modifier
@@ -1247,139 +1296,54 @@ private fun EnhancedTabCard(
                   .clip(RoundedCornerShape(2.dp))
                   .background(ThemeCyber.colors.surfaceBorder.copy(alpha = 0.6f))
               )
-              Box(
-                modifier = Modifier
-                  .fillMaxWidth(0.8f)
-                  .height(4.dp)
-                  .clip(RoundedCornerShape(2.dp))
-                  .background(ThemeCyber.colors.surfaceBorder.copy(alpha = 0.4f))
-              )
             }
 
-            // Path indicator
             Text(
-              text = tab.url,
+              text = cleanDomain,
               color = ThemeCyber.colors.textMuted,
-              fontFamily = CyberMonoFamily,
-              fontSize = 8.sp,
+              fontSize = 8.5.sp,
               maxLines = 1,
               overflow = TextOverflow.Ellipsis
             )
           }
         }
 
-        // Inactive sleeping badge overlay
+        // Sleep badge overlay
         if (tab.isInactive) {
           Surface(
             shape = RoundedCornerShape(4.dp),
-            color = Color.Black.copy(alpha = 0.75f),
-            border = BorderStroke(0.6.dp, ThemeCyber.colors.textMuted),
+            color = Color.Black.copy(alpha = 0.7f),
             modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
           ) {
             Text(
-              text = "💤 SLEEPING",
+              text = "💤 SLEEP",
               fontSize = 7.5.sp,
-              fontFamily = CyberMonoFamily,
-              color = ThemeCyber.colors.textSecondary,
+              color = Color.White,
+              fontWeight = FontWeight.Bold,
               modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
             )
           }
         }
       }
 
-      // 3. CARD FOOTER BAR (Blocked trackers count + Active Badge)
+      // 3. CARD FOOTER BAR (Close Tab Action)
       Row(
         modifier = Modifier
           .fillMaxWidth()
           .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Icon(
-            imageVector = Icons.Default.Shield,
-            contentDescription = null,
-            tint = if (tab.blockedTrackersCount > 0) ThemeCyber.colors.secondary else ThemeCyber.colors.textMuted,
-            modifier = Modifier.size(11.dp)
-          )
-          Spacer(modifier = Modifier.width(3.dp))
-          Text(
-            text = "${tab.blockedTrackersCount}",
-            color = if (tab.blockedTrackersCount > 0) ThemeCyber.colors.secondary else ThemeCyber.colors.textMuted,
-            fontSize = 9.sp,
-            fontFamily = CyberMonoFamily,
-            fontWeight = FontWeight.Bold,
-          )
-        }
-
-        if (isActive) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-              modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(ThemeCyber.colors.successGreen)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text(
-              text = "ACTIVE",
-              color = ThemeCyber.colors.successGreen,
-              fontSize = 8.5.sp,
-              fontFamily = CyberMonoFamily,
-              fontWeight = FontWeight.Bold,
-            )
-          }
-        } else {
-          val timeText = remember(tab.lastAccessedAt) {
-            DateUtils.getRelativeTimeSpanString(tab.lastAccessedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE).toString()
-          }
-          Text(
-            text = timeText,
-            color = ThemeCyber.colors.textMuted,
-            fontSize = 8.sp,
-            fontFamily = CyberMonoFamily
-          )
-        }
+        Text(
+          text = "Close Tab",
+          color = ThemeCyber.colors.textSecondary,
+          fontSize = 10.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier
+            .clickable(onClick = onClose)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+        )
       }
-    }
-  }
-}
-
-// -------------------------------------------------------------
-// FILTER CHIP COMPONENT
-// -------------------------------------------------------------
-
-@Composable
-private fun TabFilterChip(
-  title: String,
-  isSelected: Boolean,
-  colorAccent: Color = ThemeCyber.colors.primary,
-  onClick: () -> Unit,
-) {
-  Surface(
-    shape = RoundedCornerShape(8.dp),
-    color = if (isSelected) colorAccent.copy(alpha = 0.2f) else ThemeCyber.colors.surface,
-    border = BorderStroke(
-      width = if (isSelected) 1.2.dp else 0.6.dp,
-      color = if (isSelected) colorAccent else ThemeCyber.colors.surfaceBorder
-    ),
-    modifier = Modifier
-      .height(28.dp)
-      .clickable(onClick = onClick)
-  ) {
-    Box(
-      modifier = Modifier
-        .fillMaxHeight()
-        .padding(horizontal = 10.dp),
-      contentAlignment = Alignment.Center
-    ) {
-      Text(
-        text = title,
-        color = if (isSelected) colorAccent else ThemeCyber.colors.textSecondary,
-        fontSize = 11.sp,
-        fontFamily = CyberMonoFamily,
-        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-      )
     }
   }
 }

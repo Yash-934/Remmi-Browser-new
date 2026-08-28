@@ -72,10 +72,13 @@ fun BrowserView(
     label = "cyber_progress",
   )
 
+  var lastNavigatedUrl by remember(tab.id) { mutableStateOf("") }
+
   // Callbacks bundle decoupled from GeckoSession
   val tabCallbacks = remember(tab.id, tab.profile) {
     object : GeckoTabCallbacks {
       override fun onUrlChange(url: String) {
+        lastNavigatedUrl = url
         onUrlChange(url)
       }
 
@@ -155,8 +158,6 @@ fun BrowserView(
                 containerType = tab.containerType,
                 callbacks = tabCallbacks,
               )
-              gv.requestLayout()
-              gv.invalidate()
             }
           }
         }
@@ -187,9 +188,10 @@ fun BrowserView(
     geckoEngine.updateTabSettings(tab.id, tab.isDesktopMode, tab.profile, tab.securityLevel)
   }
 
-  // Handle URL navigation safely through GeckoEngineManager
+  // Handle URL navigation safely through GeckoEngineManager without feedback loops
   LaunchedEffect(tab.url) {
-    if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "netrunner://newtab") {
+    if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "netrunner://newtab" && tab.url != lastNavigatedUrl) {
+      lastNavigatedUrl = tab.url
       if (tab.profile == PrivacyProfile.GHOST) {
         val port = CurrentTorRoute.currentSocksPort
         NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, port)
@@ -269,29 +271,11 @@ fun BrowserView(
               ViewGroup.LayoutParams.MATCH_PARENT
             )
             visibility = View.VISIBLE
+            isFocusable = true
+            isFocusableInTouchMode = true
+            isNestedScrollingEnabled = false
+            tag = tab.id
             geckoViewRef = this
-
-            var startTouchY = 0f
-            setOnTouchListener { _, event ->
-              when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                  startTouchY = event.rawY
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                  val deltaY = event.rawY - startTouchY
-                  if (deltaY < -24f) {
-                    // Finger dragged up -> scrolling down page -> hide URL bar
-                    onScrollChange?.invoke(true)
-                    startTouchY = event.rawY
-                  } else if (deltaY > 24f) {
-                    // Finger dragged down -> scrolling up page -> reveal URL bar
-                    onScrollChange?.invoke(false)
-                    startTouchY = event.rawY
-                  }
-                }
-              }
-              false
-            }
 
             scope.launch {
               geckoEngine.attachView(
@@ -304,6 +288,7 @@ fun BrowserView(
                 callbacks = tabCallbacks,
               )
               if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "netrunner://newtab") {
+                lastNavigatedUrl = tab.url
                 geckoEngine.loadUrl(tab.id, tab.url)
               }
             }
@@ -311,21 +296,26 @@ fun BrowserView(
         },
         update = { geckoView ->
           geckoViewRef = geckoView
-          geckoView.visibility = View.VISIBLE
-          scope.launch {
-            geckoEngine.attachView(
-              tabId = tab.id,
-              geckoView = geckoView,
-              profile = tab.profile,
-              isDesktopMode = tab.isDesktopMode,
-              securityLevel = tab.securityLevel,
-              containerType = tab.containerType,
-              callbacks = tabCallbacks,
-            )
+          // Only re-attach if switching tabs or session detached to prevent continuous recomposition jank
+          if (geckoView.tag != tab.id || geckoView.session == null) {
+            geckoView.tag = tab.id
+            geckoView.visibility = View.VISIBLE
+            scope.launch {
+              geckoEngine.attachView(
+                tabId = tab.id,
+                geckoView = geckoView,
+                profile = tab.profile,
+                isDesktopMode = tab.isDesktopMode,
+                securityLevel = tab.securityLevel,
+                containerType = tab.containerType,
+                callbacks = tabCallbacks,
+              )
+            }
           }
         },
         onRelease = { geckoView ->
           geckoViewRef = null
+          geckoView.tag = null
           scope.launch {
             geckoEngine.detachView(tab.id, geckoView)
           }
