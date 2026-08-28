@@ -43,26 +43,30 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
   private val pendingHtmlRequests = ConcurrentHashMap<String, (url: String, html: String) -> Unit>()
   private val pendingClickRequests = ConcurrentHashMap<String, (candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit>()
 
-  // Legacy single-property compatibility with thread safety
+  // Legacy single-property compatibility with thread safety - does NOT wipe multi-listener registry
+  @Volatile
+  private var legacyThreatListener: ((url: String, type: String) -> Unit)? = null
+  @Volatile
+  private var legacyHtmlListener: ((url: String, html: String) -> Unit)? = null
+  @Volatile
+  private var legacyClickListener: ((candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit)? = null
+
   var onThreatNeutralized: ((url: String, type: String) -> Unit)?
-    get() = threatListeners.firstOrNull()
+    get() = legacyThreatListener
     set(value) {
-      threatListeners.clear()
-      if (value != null) threatListeners.add(value)
+      legacyThreatListener = value
     }
 
   var onHtmlExtracted: ((url: String, html: String) -> Unit)?
-    get() = htmlListeners.firstOrNull()
+    get() = legacyHtmlListener
     set(value) {
-      htmlListeners.clear()
-      if (value != null) htmlListeners.add(value)
+      legacyHtmlListener = value
     }
 
   var onClickInspected: ((candidates: List<JSONObject>, hasOverlay: Boolean, intercepted: Boolean, pageUrl: String) -> Unit)?
-    get() = clickListeners.firstOrNull()
+    get() = legacyClickListener
     set(value) {
-      clickListeners.clear()
-      if (value != null) clickListeners.add(value)
+      legacyClickListener = value
     }
 
   fun addThreatListener(listener: (url: String, type: String) -> Unit) = threatListeners.add(listener)
@@ -141,7 +145,14 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
                 }
               }
 
-              // Also dispatch to global listeners
+              // Also dispatch to global and legacy listeners
+              legacyClickListener?.let { listener ->
+                try {
+                  listener(candidatesList, hasOverlay, intercepted, pageUrl)
+                } catch (e: Exception) {
+                  log("[WEBEXT] Legacy click listener error: ${e.message}")
+                }
+              }
               clickListeners.forEach { listener ->
                 try {
                   listener(candidatesList, hasOverlay, intercepted, pageUrl)
@@ -154,6 +165,13 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
               if (url.isNotEmpty()) {
                 log("[TRACKER] Neutralized: $url ($category)")
                 adblockBridge.totalBlockedCount.incrementAndGet()
+                legacyThreatListener?.let { listener ->
+                  try {
+                    listener(url, category)
+                  } catch (e: Exception) {
+                    log("[WEBEXT] Legacy threat listener error: ${e.message}")
+                  }
+                }
                 threatListeners.forEach { listener ->
                   try {
                     listener(url, category)
@@ -187,7 +205,14 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
                 }
               }
 
-              // Also dispatch to global listeners
+              // Also dispatch to global and legacy listeners
+              legacyHtmlListener?.let { listener ->
+                try {
+                  listener(url, html)
+                } catch (e: Exception) {
+                  log("[WEBEXT] Legacy html listener error: ${e.message}")
+                }
+              }
               htmlListeners.forEach { listener ->
                 try {
                   listener(url, html)

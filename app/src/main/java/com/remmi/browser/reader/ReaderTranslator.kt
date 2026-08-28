@@ -61,38 +61,51 @@ object ReaderTranslator {
       return@withContext text
     }
 
+    val boundedText = if (text.length > 5000) text.take(5000) else text
+
     try {
-      val client = try {
-        getClient(isGhost)
-      } catch (e: Exception) {
-        Log.w(TAG, "Ghost client creation failed: ${e.message}")
-        return@withContext text
-      }
+      kotlinx.coroutines.withTimeout(10_000L) {
+        val client = try {
+          getClient(isGhost)
+        } catch (e: Exception) {
+          Log.w(TAG, "Ghost client creation failed: ${e.message}")
+          return@withTimeout text
+        }
 
-      val encoded = URLEncoder.encode(text, "UTF-8")
-      val url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLanguageCode&dt=t&q=$encoded"
+        val encoded = URLEncoder.encode(boundedText, "UTF-8")
+        val url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLanguageCode&dt=t&q=$encoded"
 
-      val request = Request.Builder()
-        .url(url)
-        .header("User-Agent", "Mozilla/5.0")
-        .build()
+        val request = Request.Builder()
+          .url(url)
+          .header("User-Agent", "Mozilla/5.0")
+          .build()
 
-      val response = client.newCall(request).execute()
-      if (!response.isSuccessful) return@withContext text
+        val call = client.newCall(request)
+        val response = try {
+          call.execute()
+        } catch (e: Exception) {
+          call.cancel()
+          throw e
+        }
 
-      val body = response.body?.string() ?: return@withContext text
-      val jsonArray = JSONArray(body)
-      val sentencesArray = jsonArray.optJSONArray(0) ?: return@withContext text
+        response.use { resp ->
+          if (!resp.isSuccessful) return@withTimeout text
 
-      val sb = StringBuilder()
-      for (i in 0 until sentencesArray.length()) {
-        val sentenceObj = sentencesArray.optJSONArray(i)
-        if (sentenceObj != null && sentenceObj.length() > 0) {
-          sb.append(sentenceObj.optString(0))
+          val body = resp.body?.string() ?: return@withTimeout text
+          val jsonArray = JSONArray(body)
+          val sentencesArray = jsonArray.optJSONArray(0) ?: return@withTimeout text
+
+          val sb = StringBuilder()
+          for (i in 0 until sentencesArray.length()) {
+            val sentenceObj = sentencesArray.optJSONArray(i)
+            if (sentenceObj != null && sentenceObj.length() > 0) {
+              sb.append(sentenceObj.optString(0))
+            }
+          }
+          val result = sb.toString().trim()
+          if (result.isNotBlank()) result else text
         }
       }
-      val result = sb.toString().trim()
-      if (result.isNotBlank()) result else text
     } catch (e: Exception) {
       Log.e(TAG, "Translation error for language $targetLanguageCode", e)
       text
@@ -108,13 +121,19 @@ object ReaderTranslator {
     isGhost: Boolean = false,
     onProgress: (Int, Int) -> Unit = { _, _ -> }
   ): ReaderArticle = withContext(Dispatchers.IO) {
+    if (isGhost && !com.remmi.browser.security.CurrentTorRoute.isReady) {
+      Log.w(TAG, "Ghost article translation blocked: Tor route is not verified")
+      return@withContext article
+    }
+
     val lang = SUPPORTED_LANGUAGES.firstOrNull { it.code == targetLanguageCode }?.displayName ?: targetLanguageCode
 
     val translatedTitle = translateText(article.title, targetLanguageCode, isGhost)
     val translatedParas = mutableListOf<ReaderParagraph>()
 
-    val total = article.paragraphs.size
-    for ((idx, p) in article.paragraphs.withIndex()) {
+    val boundedParagraphs = article.paragraphs.take(200)
+    val total = boundedParagraphs.size
+    for ((idx, p) in boundedParagraphs.withIndex()) {
       onProgress(idx + 1, total)
       val translatedText = translateText(p.text, targetLanguageCode, isGhost)
       translatedParas.add(

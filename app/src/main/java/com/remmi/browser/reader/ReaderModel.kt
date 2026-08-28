@@ -101,36 +101,51 @@ object ReaderExtractor {
     }
 
     try {
-      val request = Request.Builder()
-        .url(url)
-        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36")
-        .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8")
-        .build()
+      kotlinx.coroutines.withTimeout(20_000L) {
+        val request = Request.Builder()
+          .url(url)
+          .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36")
+          .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8")
+          .build()
 
-      val response = client.newCall(request).execute()
-      if (!response.isSuccessful) {
-        return@withContext createFallbackArticle(url, currentTitle, domain, "HTTP error ${response.code}")
+        val call = client.newCall(request)
+        // Coroutine cancellation support
+        val response = try {
+          call.execute()
+        } catch (e: Exception) {
+          call.cancel()
+          throw e
+        }
+
+        response.use { resp ->
+          if (!resp.isSuccessful) {
+            return@withTimeout createFallbackArticle(url, currentTitle, domain, "HTTP error ${resp.code}")
+          }
+
+          val contentType = resp.header("Content-Type", "")?.lowercase() ?: ""
+          if (contentType.isNotEmpty() && !contentType.contains("text/html") && !contentType.contains("xhtml") && !contentType.contains("text/plain")) {
+            return@withTimeout createFallbackArticle(url, currentTitle, domain, "Unsupported Content-Type: $contentType")
+          }
+
+          val responseBody = resp.body
+          if (responseBody == null) {
+            return@withTimeout createFallbackArticle(url, currentTitle, domain, "Empty page response")
+          }
+
+          val source = responseBody.source()
+          val bytes = source.readByteArray(MAX_RESPONSE_BYTES)
+          val html = String(bytes, Charsets.UTF_8)
+
+          if (html.isBlank()) {
+            return@withTimeout createFallbackArticle(url, currentTitle, domain, "Empty page response")
+          }
+
+          parseHtmlDocument(html, url, currentTitle, domain)
+        }
       }
-
-      val contentType = response.header("Content-Type", "")?.lowercase() ?: ""
-      if (contentType.isNotEmpty() && !contentType.contains("text/html") && !contentType.contains("xhtml") && !contentType.contains("text/plain")) {
-        return@withContext createFallbackArticle(url, currentTitle, domain, "Unsupported Content-Type: $contentType")
-      }
-
-      val responseBody = response.body
-      if (responseBody == null) {
-        return@withContext createFallbackArticle(url, currentTitle, domain, "Empty page response")
-      }
-
-      val source = responseBody.source()
-      val bytes = source.readByteArray(MAX_RESPONSE_BYTES)
-      val html = String(bytes, Charsets.UTF_8)
-
-      if (html.isBlank()) {
-        return@withContext createFallbackArticle(url, currentTitle, domain, "Empty page response")
-      }
-
-      parseHtmlDocument(html, url, currentTitle, domain)
+    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+      Log.e(TAG, "Reader extraction timed out for $url", e)
+      createFallbackArticle(url, currentTitle, domain, "Extraction timed out (20s limit)")
     } catch (e: Exception) {
       Log.e(TAG, "Failed to extract article from $url", e)
       createFallbackArticle(url, currentTitle, domain, e.localizedMessage ?: "Extraction error")
@@ -143,7 +158,8 @@ object ReaderExtractor {
     fallbackTitle: String,
     domain: String,
   ): ReaderArticle {
-    val doc: Document = Jsoup.parse(html, url)
+    val boundedHtml = if (html.length > 2_000_000) html.take(2_000_000) else html
+    val doc: Document = Jsoup.parse(boundedHtml, url)
 
     // Extract Title
     val ogTitle = doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
@@ -202,13 +218,15 @@ object ReaderExtractor {
     // Collapse 3+ newlines into 2
     bodyText = bodyText.replace(Regex("\n{3,}"), "\n\n")
 
-    val chunks = bodyText.split(Regex("\n\\s*\n")).filter { it.trim().length > 15 }
+    val chunks = bodyText.split(Regex("\n\\s*\n"))
+      .filter { it.trim().length > 15 }
+      .take(MAX_ARTICLE_PARAGRAPHS)
 
     val paragraphs = mutableListOf<ReaderParagraph>()
     val rawList = mutableListOf<String>()
 
     chunks.forEachIndexed { idx, chunk ->
-      val text = chunk.trim()
+      val text = chunk.trim().take(10_000)
       // Basic heading detection: short, no terminal punctuation
       val isHeading = text.length in 5..80 && !text.matches(Regex(".*[.?!]$"))
       val headingLevel = if (isHeading) 2 else 0
