@@ -141,6 +141,7 @@ fun ReaderView(
   initialFontSizeIndex: Int = 1,
   onFontSizeChanged: (Int) -> Unit = {},
   onClose: () -> Unit,
+  isGhostRoute: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
@@ -1286,6 +1287,7 @@ fun ReaderView(
                         val translated = ReaderTranslator.translateArticle(
                           article = art,
                           targetLanguageCode = lang.code,
+                          isGhost = isGhostRoute,
                           onProgress = { current, total ->
                             translationProgress = (current.toFloat() / total).coerceIn(0.1f, 0.95f)
                           }

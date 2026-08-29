@@ -45,19 +45,17 @@ function connectNative() {
       if (!msg) return;
       if (msg.type === "EXTRACT_HTML") {
         const requestId = msg.requestId;
-        browser.tabs.query({active: true}).then(tabs => {
-          if (tabs.length > 0) {
-            const activeTab = tabs[0];
-            browser.tabs.executeScript(activeTab.id, {
-              code: "document.documentElement.outerHTML;"
-            }).then((res) => {
-              const html = (res && res[0]) ? res[0] : "";
-              port.postMessage({ type: "EXTRACTED_HTML", html: html, url: activeTab.url, requestId: requestId });
-            }).catch(e => {
-              port.postMessage({ type: "EXTRACTED_HTML", html: "", url: "", requestId: requestId });
-            });
-          }
-        });
+        const tabId = msg.tabId;
+        if (tabId !== undefined && tabId !== null) {
+          browser.tabs.executeScript(tabId, {
+            code: "document.documentElement.outerHTML;"
+          }).then((res) => {
+            const html = (res && res[0]) ? res[0] : "";
+            if (port) port.postMessage({ type: "EXTRACTED_HTML", html: html, url: "", requestId: requestId, tabId: tabId });
+          }).catch(e => {
+            if (port) port.postMessage({ type: "EXTRACTED_HTML", html: "", url: "", requestId: requestId, tabId: tabId });
+          });
+        }
       }
     });
 

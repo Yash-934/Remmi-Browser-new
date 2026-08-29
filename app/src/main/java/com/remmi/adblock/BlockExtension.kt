@@ -37,6 +37,7 @@ enum class ExtensionState {
 
 class BlockExtension private constructor(private val adblockBridge: AdblockBridge) : WebExtension.MessageDelegate {
 
+  var siteSecurityProvider: ((String) -> Boolean)? = null
   // Global listeners (for passive threat and click interception events)
   private val threatListeners = CopyOnWriteArraySet<(url: String, type: String) -> Unit>()
   private val htmlListeners = CopyOnWriteArraySet<(url: String, html: String) -> Unit>()
@@ -113,7 +114,12 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
         
         val result = org.mozilla.geckoview.GeckoResult<Any>()
         CoroutineScope(Dispatchers.IO).launch {
-            val blocked = adblockBridge.shouldBlock(url, sourceUrl, resourceType)
+            val sourceHost = try {
+                if (sourceUrl.isNotEmpty()) java.net.URI(sourceUrl).host?.lowercase()?.trim() else null
+            } catch (e: Exception) { null }
+            val bypass = sourceHost != null && siteSecurityProvider?.invoke(sourceHost) == true
+            
+            val blocked = if (bypass) false else adblockBridge.shouldBlock(url, sourceUrl, resourceType)
             val responseObj = JSONObject().apply { put("cancel", blocked) }
             result.complete(responseObj)
         }
@@ -211,24 +217,20 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
             "EXTRACTED_HTML", "extracted_html" -> {
               val html = message.optString("html")
 
-              // Route to isolated request first
+              var targeted: ((String, String) -> Unit)? = null
               if (requestId.isNotEmpty()) {
-                val targeted = pendingHtmlRequests.remove(requestId)
-                if (targeted != null) {
-                  try {
-                    targeted(url, html)
-                  } catch (e: Exception) {
-                    log("[WEBEXT] Targeted html callback error: ${e.message}")
-                  }
-                }
-              } else if (tabId.isNotEmpty()) {
-                val targeted = pendingHtmlRequests.remove(tabId)
-                if (targeted != null) {
-                  try {
-                    targeted(url, html)
-                  } catch (e: Exception) {
-                    log("[WEBEXT] Targeted html callback error: ${e.message}")
-                  }
+                targeted = pendingHtmlRequests.remove(requestId)
+              }
+              if (tabId.isNotEmpty()) {
+                val byTab = pendingHtmlRequests.remove(tabId)
+                if (targeted == null) targeted = byTab
+              }
+
+              if (targeted != null) {
+                try {
+                  targeted(url, html)
+                } catch (e: Exception) {
+                  log("[WEBEXT] Targeted html callback error: ${e.message}")
                 }
               }
 

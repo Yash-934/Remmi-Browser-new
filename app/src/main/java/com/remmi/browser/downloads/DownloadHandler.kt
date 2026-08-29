@@ -120,7 +120,7 @@ class DownloadHandler(private val context: Context) {
     webResponse: WebResponse?
   ) {
     if (isGhost) {
-      if (!com.remmi.browser.security.CurrentTorRoute.isGhostActive || !com.remmi.browser.security.CurrentTorRoute.isVerified || com.remmi.browser.security.CurrentTorRoute.currentSocksPort == null) {
+      if (!com.remmi.browser.security.CurrentTorRoute.isReady || com.remmi.browser.security.CurrentTorRoute.currentGeneration <= 0L) {
         val errorNotif = NotificationCompat.Builder(context, CHANNEL_ID)
           .setContentTitle("Download failed: Security Alert")
           .setContentText("Ghost route unavailable or unverified. Download aborted to prevent leaks.")

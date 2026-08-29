@@ -406,6 +406,35 @@ fun BrowserScreen(
     }
   }
 
+  val handleOpenGhostTab: (String?) -> Unit = { url ->
+    scope.launch {
+      isWaitingForTor = true
+      // Create tab as SHIELD initially to prevent routing leaks before Tor is ready
+      tabManager.openTab(url = url ?: "about:blank", profile = PrivacyProfile.SHIELD)
+      val newTabId = tabManager.tabs.value.last().id
+      privacyController.enterGhostMode(newTabId).onSuccess { port ->
+        isWaitingForTor = false
+        withContext(Dispatchers.Main) {
+          android.widget.Toast.makeText(
+            context,
+            "Ghost Mode Active • Encrypted Tor Routing (127.0.0.1:$port)",
+            android.widget.Toast.LENGTH_SHORT
+          ).show()
+        }
+      }.onFailure { err ->
+        isWaitingForTor = false
+        tabManager.closeTab(newTabId)
+        withContext(Dispatchers.Main) {
+          android.widget.Toast.makeText(
+            context,
+            "Ghost Activation Failed: ${err.message}",
+            android.widget.Toast.LENGTH_LONG
+          ).show()
+        }
+      }
+    }
+  }
+
   // Handle system back navigation (including edge swipe gestures)
   BackHandler(enabled = true) {
     if (activeContextMenuData != null) {
@@ -821,6 +850,7 @@ fun BrowserScreen(
             initialFontSizeIndex = settings.readerFontSize,
             onFontSizeChanged = { settingsRepo.updateReaderFontSize(it) },
             onClose = { tabManager.toggleReaderMode(activeTab.id) },
+            isGhostRoute = activeTab.profile == PrivacyProfile.GHOST,
             modifier = Modifier.fillMaxSize()
           )
         }
@@ -1221,8 +1251,7 @@ fun BrowserScreen(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                 onClick = {
                   showMenuDropdown = false
-                  tabManager.openTab(profile = PrivacyProfile.GHOST)
-                  scope.launch { torManager.startTor() }
+                  handleOpenGhostTab(null)
                 }
               )
 
@@ -1830,7 +1859,7 @@ fun BrowserScreen(
         isOrbotInstalled = torManager.isOrbotInstalled(),
         onCheckTorProject = {
           showCircuitSheet = false
-          tabManager.openTab(url = "https://check.torproject.org", profile = PrivacyProfile.GHOST)
+          handleOpenGhostTab("https://check.torproject.org")
         },
         onDismiss = { showCircuitSheet = false },
       )
@@ -1904,7 +1933,7 @@ fun BrowserScreen(
         android.widget.Toast.makeText(context, "Opened in background tab", android.widget.Toast.LENGTH_SHORT).show()
       },
       onOpenInInPrivateTab = { url ->
-        tabManager.openTab(url = url, profile = PrivacyProfile.GHOST, isDesktop = settings.defaultDesktopMode)
+        handleOpenGhostTab(url)
       },
       onOpenInNewWindow = { url ->
         tabManager.openTab(url = url, profile = activeTab.profile, isDesktop = settings.defaultDesktopMode)

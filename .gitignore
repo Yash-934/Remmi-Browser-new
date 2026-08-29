@@ -21,3 +21,6 @@ debug.keystore
 release-keystore.jks
 *.patch
 APK_SIZE_REPORT.txt
+*.hprof
+*.log
+rust/target/

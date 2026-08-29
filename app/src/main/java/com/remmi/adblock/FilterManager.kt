@@ -66,11 +66,11 @@ class FilterManager(
     ),
     FilterSubscription(
       id = "brave_unbreak",
-      title = "Remmi Anti-Malware / Phishing",
-      description = "Blocks known cryptominers, malicious redirects, and hostile domains.",
+      title = "Brave Unbreak",
+      description = "Fixes sites broken by adblockers.",
       ruleCount = 14800,
       enabled = prefs?.getBoolean("filter_brave_unbreak", true) ?: true,
-      url = "https://easylist.to/easylist/easylist.txt"
+      url = "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-unbreak.txt"
     ),
   )
 
@@ -201,7 +201,7 @@ class FilterManager(
           }
         }
       }
-      if (combinedRules.isNotEmpty()) {
+      if (true) {
         return@withLock adblockBridge.compileRules(combinedRules.toString())
       }
       return@withLock 0
@@ -228,7 +228,7 @@ class FilterManager(
         }
       }
       val compiledCount = loadPersistedRulesIntoBridgeAsync()
-      if (compiledCount <= 0) {
+      if (compiledCount < 0) {
         successAll = false
       }
     } catch (e: Exception) {

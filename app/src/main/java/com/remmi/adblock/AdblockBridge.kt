@@ -66,7 +66,6 @@ class AdblockBridge {
       "advertising.com", "amazon-adsystem.com", "bidswitch.net",
       "revcontent.com", "mgid.com", "zergnet.com", "popads.net"
     )
-
     blockedHostnames.addAll(defaultDomains)
 
     val defaultPatterns = listOf(
@@ -76,6 +75,16 @@ class AdblockBridge {
       "telemetry.", "tracking.", "statcounter.com"
     )
     blockedSubstrings.addAll(defaultPatterns)
+
+    if (isNativeLoaded) {
+      val rulesText = defaultDomains.joinToString("\n") { "||$it^" } + "\n" +
+        defaultPatterns.joinToString("\n")
+      try {
+        nativeCompileRules(rulesText)
+      } catch (e: Throwable) {
+        Log.e(TAG, "Failed to compile default rules into native engine", e)
+      }
+    }
   }
 
   suspend fun addCustomRule(rule: String) = mutex.withLock {
@@ -98,6 +107,10 @@ class AdblockBridge {
         Log.e(TAG, "Native compile rules failed: ${e.message}", e)
       }
     }
+    blockedHostnames.clear()
+    blockedSubstrings.clear()
+    allowList.clear()
+
     // Also parse into Kotlin memory fallback
     rulesText.lines().forEach { line ->
       val trimmed = line.trim()

@@ -7,6 +7,7 @@ import com.remmi.browser.engine.TabManager
 import com.remmi.browser.util.DebugLogManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -15,9 +16,9 @@ import kotlinx.coroutines.withContext
  * native Gecko proxy enforcement, leak prevention, and fail-closed guarantees.
  */
 class PrivacyNetworkController private constructor(private val context: Context) {
-
   private val torManager = TorManager.getInstance(context)
   private val geckoEngine = GeckoEngineManager.getInstance(context)
+  private val transitionMutex = kotlinx.coroutines.sync.Mutex()
 
   val torState: StateFlow<TorManager.TorState> = torManager.bootstrapState
   val currentCircuit: StateFlow<TorCircuit?> = torManager.currentCircuit
@@ -30,9 +31,10 @@ class PrivacyNetworkController private constructor(private val context: Context)
    * 4. Updates CurrentTorRoute single source of truth.
    * 5. Returns success only if Tor exit routing and native Gecko proxy are verified.
    */
-  suspend fun enterGhostMode(tabId: String): Result<Int> = withContext(Dispatchers.IO) {
-    Log.i(TAG, "Entering Ghost Mode for tab $tabId (enforcing fail-closed Tor routing)...")
-    val generation = CurrentTorRoute.markStartingGhost()
+  suspend fun enterGhostMode(tabId: String): Result<Int> = transitionMutex.withLock {
+    withContext(Dispatchers.IO) {
+      Log.i(TAG, "Entering Ghost Mode for tab $tabId (enforcing fail-closed Tor routing)...")
+      val generation = CurrentTorRoute.markStartingGhost()
     DebugLogManager.log("[ROUTE] REQUESTED profile=GHOST tabId=$tabId generation=$generation")
 
     // Step 1: Terminate active clearnet session first
@@ -94,6 +96,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
 
     DebugLogManager.log("[ROUTE] ACTIVE profile=GHOST port=$socksPort exitIp=${torManager.currentCircuit.value?.verifiedExitIp ?: "Active"}")
     Result.success(socksPort)
+    }
   }
 
   /**

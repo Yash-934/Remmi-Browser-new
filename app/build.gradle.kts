@@ -11,12 +11,12 @@ plugins {
 
 android {
   namespace = "com.remmi.browser"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.remmi.browser"
-    minSdk = 24
-    targetSdk = 36
+    minSdk = 26
+    targetSdk = 37
     versionCode = 1
     versionName = "1.0.0"
 
@@ -105,7 +105,7 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
   // GeckoView & Tor dependencies (Pinned deterministic versions)
-  implementation("org.mozilla.geckoview:geckoview:125.0.20240425211020")
+  implementation("org.mozilla.geckoview:geckoview:154.0.20260824154132")
   implementation("info.guardianproject:tor-android:0.4.8.12")
   implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 
@@ -128,6 +128,7 @@ dependencies {
   implementation(libs.sqlcipher)
   implementation(libs.androidx.sqlite.ktx)
   implementation(libs.coil.compose)
+  implementation("io.coil-kt.coil3:coil-network-okhttp:${libs.versions.coilCompose.get()}")
   implementation(libs.jsoup)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)

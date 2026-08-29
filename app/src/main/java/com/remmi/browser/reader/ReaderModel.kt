@@ -149,17 +149,17 @@ object ReaderExtractor {
       return@withContext createFallbackArticle(url, currentTitle, domain, "Extraction blocked: Unsupported or unsafe URL scheme")
     }
 
-    if (com.remmi.browser.security.NavigationSecurityAuthority.isPrivateOrLocalHost(domain)) {
+    if (com.remmi.browser.security.NavigationSecurityAuthority.isPrivateOrLocalHost(domain, isGhost || com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url))) {
       return@withContext createFallbackArticle(url, currentTitle, domain, "Extraction blocked: Local/Private address targets are prohibited")
     }
 
     val isOnion = com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url)
-    if ((isGhost || isOnion) && !com.remmi.browser.security.CurrentTorRoute.isReady) {
+    if ((isGhost || com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url)) && !com.remmi.browser.security.CurrentTorRoute.isReady) {
       return@withContext createFallbackArticle(url, currentTitle, domain, "Extraction blocked: Tor route is not verified")
     }
 
     val client = try {
-      getClient(isGhost || isOnion, url)
+      getClient(isGhost || com.remmi.browser.security.NetworkRouteAuthority.isOnionDestination(url), url)
     } catch (e: Exception) {
       return@withContext createFallbackArticle(url, currentTitle, domain, "Network authority error: ${e.message}")
     }

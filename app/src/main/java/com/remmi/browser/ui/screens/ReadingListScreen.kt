@@ -160,6 +160,7 @@ fun ReadingListScreen(
         offlineArticleToRead = null
         offlineReadingItemId = null
       },
+      isGhostRoute = com.remmi.browser.security.CurrentTorRoute.isGhostActive,
       modifier = Modifier.fillMaxSize()
     )
     return

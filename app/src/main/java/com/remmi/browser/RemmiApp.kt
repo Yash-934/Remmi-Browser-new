@@ -2,8 +2,9 @@ package com.remmi.browser
 
 import android.app.Application
 import android.util.Log
-import coil.ImageLoader
-import coil.ImageLoaderFactory
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.request.crossfade
 import com.remmi.adblock.AdblockBridge
 import com.remmi.browser.engine.GeckoEngineManager
 import com.remmi.browser.security.CurrentTorRoute
@@ -14,9 +15,9 @@ import okhttp3.Call
 import java.io.File
 import java.util.concurrent.Executors
 
-class RemmiApp : Application(), ImageLoaderFactory {
+class RemmiApp : Application(), SingletonImageLoader.Factory {
 
-  override fun newImageLoader(): ImageLoader {
+  override fun newImageLoader(context: coil3.PlatformContext): ImageLoader {
     val callFactory = Call.Factory { request ->
       val targetUrl = request.url.toString()
       val isGhost = CurrentTorRoute.isGhostActive || NetworkRouteAuthority.isOnionDestination(targetUrl)
@@ -29,8 +30,10 @@ class RemmiApp : Application(), ImageLoaderFactory {
       client.newCall(request)
     }
 
-    return ImageLoader.Builder(this)
-      .callFactory(callFactory)
+    return ImageLoader.Builder(context)
+      .components {
+        add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = callFactory))
+      }
       .crossfade(true)
       .build()
   }

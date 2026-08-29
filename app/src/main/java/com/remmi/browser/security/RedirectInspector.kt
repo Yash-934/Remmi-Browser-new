@@ -661,8 +661,9 @@ object RedirectInspector {
 
     // Try parsing as InetAddress if host is IP literal
     try {
-      if (host.matches(Regex("""^[\d.]+$""")) || host.contains(":")) {
-        val parsedAddr = InetAddress.getByName(host.removePrefix("[").removeSuffix("]"))
+      val ipLiteral = host.removePrefix("[").removeSuffix("]")
+      if (android.net.InetAddresses.isNumericAddress(ipLiteral)) {
+        val parsedAddr = InetAddress.getByName(ipLiteral)
         val (safe, reason) = isInetAddressSafe(parsedAddr)
         if (!safe) {
           return Pair(false, "SSRF Block: $reason")

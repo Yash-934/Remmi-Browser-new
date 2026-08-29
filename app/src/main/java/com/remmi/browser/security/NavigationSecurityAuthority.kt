@@ -124,8 +124,8 @@ object NavigationSecurityAuthority {
 
     // Check IP literal directly
     try {
-      if (clean.matches(Regex("^[0-9.]+$")) || clean.contains(':')) {
-        val addr = InetAddress.getByName(clean)
+      if (android.net.InetAddresses.isNumericAddress(clean.removePrefix("[").removeSuffix("]"))) {
+        val addr = InetAddress.getByName(clean.removePrefix("[").removeSuffix("]"))
         val (isSafe, _) = RedirectInspector.isInetAddressSafe(addr)
         if (!isSafe) return true
       }

@@ -69,6 +69,12 @@ class GeckoEngineManager private constructor(private val context: Context) {
     private set
 
   val blockExtension = BlockExtension.getInstance()
+  init {
+    blockExtension.siteSecurityProvider = { host ->
+      val policy = com.remmi.browser.security.SiteSecurityPolicyManager.getInstance(context).getPolicyForHost(host)
+      policy.cookiePolicy == "ALLOW"
+    }
+  }
   private var currentProfile: PrivacyProfile = PrivacyProfile.SHIELD
   private val activeSessions = mutableMapOf<String, GeckoSession>()
   private val sessionCallbacks = mutableMapOf<String, GeckoTabCallbacks>()
@@ -320,7 +326,8 @@ class GeckoEngineManager private constructor(private val context: Context) {
       override fun onLocationChange(
         session: GeckoSession,
         url: String?,
-        perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>
+        perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+        hasUserGesture: Boolean
       ) {
         url?.let {
           if (it.isNotBlank() && it != "about:blank") {
