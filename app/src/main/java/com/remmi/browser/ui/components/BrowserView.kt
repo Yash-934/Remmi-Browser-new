@@ -282,17 +282,12 @@ fun BrowserView(
                 containerType = tab.containerType,
                 callbacks = tabCallbacks,
               )
-              if (tab.url.isNotBlank() && tab.url != "about:blank" && tab.url != "remmi://newtab") {
-                lastNavigatedUrl = tab.url
-                geckoEngine.loadUrl(tab.id, tab.url)
-              }
             }
           }
         },
         update = { geckoView ->
           geckoViewRef = geckoView
-          // Only re-attach if switching tabs or session detached to prevent continuous recomposition jank
-          if (geckoView.tag != tab.id || geckoView.session == null) {
+          if (geckoView.tag != tab.id) {
             geckoView.tag = tab.id
             geckoView.visibility = View.VISIBLE
             scope.launch {

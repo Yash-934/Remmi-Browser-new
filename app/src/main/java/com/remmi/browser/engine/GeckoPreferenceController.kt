@@ -31,17 +31,19 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
     }
     
     return try {
-      val result = NativePrefCtrl.setGeckoPrefs(setList).poll(10000L)
-      if (result == null) {
-          Log.e(TAG, "Failed to apply Gecko preferences: timed out or null result")
-          return false
-      }
-      val anyFailed = result.values.any { it != true }
-      if (anyFailed) {
-          Log.e(TAG, "Failed to apply some Gecko preferences")
-          return false
-      }
-      Log.i(TAG, "Successfully applied ${prefs.size} native Gecko preferences (branch=$branch)")
+      NativePrefCtrl.setGeckoPrefs(setList).accept(
+        { result ->
+          val anyFailed = result?.values?.any { it != true } == true
+          if (anyFailed) {
+            Log.w(TAG, "Some Gecko preferences were rejected")
+          } else {
+            Log.d(TAG, "Successfully applied ${prefs.size} native Gecko preferences (branch=$branch)")
+          }
+        },
+        { error ->
+          Log.w(TAG, "Failed to apply Gecko preferences: ${error?.message}")
+        }
+      )
       true
     } catch (t: Throwable) {
       Log.e(TAG, "Failed to apply Gecko preferences: ${t.message}", t)
