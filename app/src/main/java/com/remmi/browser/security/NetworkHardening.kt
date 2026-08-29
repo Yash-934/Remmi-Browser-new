@@ -176,6 +176,26 @@ object NetworkHardening {
     val applied = prefController.applyPreferences(prefs, GeckoPreferenceController.PREF_BRANCH_USER)
 
     if (applied) {
+      val verifyKeys = listOf(
+        "network.proxy.type",
+        "network.proxy.socks",
+        "network.proxy.socks_port",
+        "network.proxy.socks_remote_dns",
+        "network.proxy.failover_direct"
+      )
+      val readBack = prefController.getPreferences(verifyKeys)
+      val isReadbackValid = readBack["network.proxy.type"] == 1 &&
+        readBack["network.proxy.socks"] == "127.0.0.1" &&
+        readBack["network.proxy.socks_port"] == port &&
+        readBack["network.proxy.socks_remote_dns"] == true &&
+        readBack["network.proxy.failover_direct"] == false
+      
+      if (!isReadbackValid) {
+        Log.e(TAG, "Critical Ghost preferences readback failed! Expected proxy on $port but got: $readBack")
+        DebugLogManager.log("[ROUTE] gecko_proxy_failed profile=GHOST reason=readback_mismatch")
+        return false
+      }
+
       lastAppliedRouteKey = targetKey
       DebugLogManager.log("[ROUTE] NATIVE_GECKO_APPLIED profile=GHOST port=$port")
     } else {

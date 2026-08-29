@@ -9,6 +9,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import org.mozilla.geckoview.GeckoWebExecutor
+import org.mozilla.geckoview.WebRequest
+import java.util.Scanner
 
 /**
  * Authoritative Privacy & Network Security Controller for Remmi Browser.
@@ -22,6 +27,19 @@ class PrivacyNetworkController private constructor(private val context: Context)
 
   val torState: StateFlow<TorManager.TorState> = torManager.bootstrapState
   val currentCircuit: StateFlow<TorCircuit?> = torManager.currentCircuit
+
+  init {
+    CoroutineScope(Dispatchers.Default).launch {
+      torManager.bootstrapState.collect { state ->
+        if (state is TorManager.TorState.OFF || state is TorManager.TorState.FAILED || state is TorManager.TorState.STOPPING) {
+          if (CurrentTorRoute.isGhostActive) {
+            Log.w(TAG, "Tor stopped unexpectedly while Ghost active. Invalidating route!")
+            CurrentTorRoute.clearRoute()
+          }
+        }
+      }
+    }
+  }
 
   /**
    * Enters Ghost Mode transactionally with Fail-Closed guarantee:
@@ -80,7 +98,31 @@ class PrivacyNetworkController private constructor(private val context: Context)
       return@withContext Result.failure(err)
     }
 
-    // Step 5: Advance route generation and update Single Source of Truth
+    // Step 5: Verify Gecko is actually using the expected route
+    val geckoVerified = try {
+      val executor = GeckoWebExecutor(geckoEngine.runtime!!)
+      val request = WebRequest.Builder("https://check.torproject.org/api/ip").build()
+      val response = executor.fetch(request).poll(10000)
+      if (response != null && response.statusCode == 200) {
+        val bodyStream = response.body
+        if (bodyStream != null) {
+          val content = Scanner(bodyStream, "UTF-8").useDelimiter("\\A").next()
+          bodyStream.close()
+          content.contains("\"IsTor\":true")
+        } else false
+      } else false
+    } catch (e: Exception) {
+      false
+    }
+    
+    if (!geckoVerified) {
+      val err = IllegalStateException("Gecko native Tor proxy verification failed (not routing through Tor)")
+      CurrentTorRoute.clearRoute()
+      DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=gecko_verification_failed")
+      return@withContext Result.failure(err)
+    }
+
+    // Step 6: Advance route generation and update Single Source of Truth
     CurrentTorRoute.updateRoute(
       socksPort = socksPort,
       isGhostActive = true,
@@ -125,14 +167,50 @@ class PrivacyNetworkController private constructor(private val context: Context)
   /**
    * Rotates Tor circuit using genuine NEWNYM signal.
    */
-  suspend fun rotateTorCircuit(): Result<TorCircuit> {
+  suspend fun rotateTorCircuit(): Result<TorCircuit> = transitionMutex.withLock {
+    val generation = CurrentTorRoute.markStartingGhost()
     val result = torManager.refreshCircuit()
-    result.getOrNull()?.let { c ->
+    
+    if (result.isFailure) {
+      CurrentTorRoute.clearRoute()
+      return result
+    }
+    
+    val c = result.getOrNull()
+    if (c != null) {
+      val proxyApplied = NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, c.socksPort, generation)
+      if (!proxyApplied) {
+        CurrentTorRoute.clearRoute()
+        return Result.failure(IllegalStateException("Failed to apply Gecko Tor proxy preferences on circuit rotation"))
+      }
+      
+      val geckoVerified = try {
+        val executor = GeckoWebExecutor(geckoEngine.runtime!!)
+        val request = WebRequest.Builder("https://check.torproject.org/api/ip").build()
+        val response = executor.fetch(request).poll(10000)
+        if (response != null && response.statusCode == 200) {
+          val bodyStream = response.body
+          if (bodyStream != null) {
+            val content = Scanner(bodyStream, "UTF-8").useDelimiter("\\A").next()
+            bodyStream.close()
+            content.contains("\"IsTor\":true")
+          } else false
+        } else false
+      } catch (e: Exception) {
+        false
+      }
+      
+      if (!geckoVerified) {
+        CurrentTorRoute.clearRoute()
+        return Result.failure(IllegalStateException("Gecko native Tor proxy verification failed on circuit rotation"))
+      }
+      
       CurrentTorRoute.updateRoute(
         socksPort = c.socksPort,
         isGhostActive = true,
         isVerified = true,
-        exitIp = c.verifiedExitIp
+        exitIp = c.verifiedExitIp,
+        generation = generation
       )
     }
     return result

@@ -220,7 +220,7 @@ fun BrowserView(
           ReaderExtractor.parseHtmlDocument(pageHtml, tab.url, tab.title, domain)
         } else {
           val isGhost = tab.profile == PrivacyProfile.GHOST
-          ReaderExtractor.extractFromUrl(tab.url, tab.title, isGhost)
+          ReaderExtractor.extractFromUrl(context, tab.url, tab.title, isGhost)
         }
 
         onReaderArticleExtracted?.invoke(extracted)

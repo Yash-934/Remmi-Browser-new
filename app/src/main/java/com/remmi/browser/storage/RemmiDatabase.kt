@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
 import net.sqlcipher.database.SupportFactory
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -460,14 +461,7 @@ abstract class RemmiDatabase : RoomDatabase() {
       }
     }
 
-    fun <T> withDatabase(context: android.content.Context, block: (RemmiDatabase) -> T): T {
-        dbLock.readLock().lock()
-        try {
-            return block(getDatabase(context))
-        } finally {
-            dbLock.readLock().unlock()
-        }
-    }
+
     private var INSTANCE: RemmiDatabase? = null
 
     private const val PREFS_NAME = "remmi_vault_prefs"
@@ -601,6 +595,8 @@ abstract class RemmiDatabase : RoomDatabase() {
     private val _databaseState = MutableStateFlow<DatabaseState>(DatabaseState.Loading)
     val databaseState: StateFlow<DatabaseState> = _databaseState.asStateFlow()
 
+    @Volatile
+    private var initDeferred: kotlinx.coroutines.Deferred<RemmiDatabase>? = null
     private val initMutex = Mutex()
     private val bootstrapScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -632,35 +628,38 @@ abstract class RemmiDatabase : RoomDatabase() {
         }
         return@withContext existing
       }
-      initMutex.withLock {
-        var instance = INSTANCE
-        if (instance != null && instance.isOpen) {
-          if (_databaseState.value !is DatabaseState.Ready) {
+      val deferred = initMutex.withLock {
+        var d = initDeferred
+        if (d == null) {
+          val ctx = context.applicationContext
+          d = kotlinx.coroutines.GlobalScope.async(Dispatchers.IO) {
+            val startTime = android.os.SystemClock.elapsedRealtime()
+            try {
+              net.sqlcipher.database.SQLiteDatabase.loadLibs(ctx)
+            } catch (_: Throwable) {}
+            val passphrase = getOrCreatePassphrase(ctx)
+            val supportFactory = SupportFactory(passphrase, null, false)
+            val instance = Room.databaseBuilder(
+              ctx,
+              RemmiDatabase::class.java,
+              "remmi_vault.db"
+            )
+              .openHelperFactory(supportFactory)
+              .fallbackToDestructiveMigration(false)
+              .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+              .build()
+            INSTANCE = instance
             _databaseState.value = DatabaseState.Ready(instance)
+            val duration = android.os.SystemClock.elapsedRealtime() - startTime
+            android.util.Log.i("RemmiDatabase", "Asynchronous database initialization completed in ${duration}ms")
+            initDeferred = null
+            instance
           }
-          return@withLock instance
+          initDeferred = d
         }
-        val startTime = android.os.SystemClock.elapsedRealtime()
-        try {
-          net.sqlcipher.database.SQLiteDatabase.loadLibs(context.applicationContext)
-        } catch (_: Throwable) {}
-        val passphrase = getOrCreatePassphrase(context.applicationContext)
-        val supportFactory = SupportFactory(passphrase, null, false)
-        instance = Room.databaseBuilder(
-          context.applicationContext,
-          RemmiDatabase::class.java,
-          "remmi_vault.db"
-        )
-          .openHelperFactory(supportFactory)
-          .fallbackToDestructiveMigration(false)
-          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-          .build()
-        INSTANCE = instance
-        _databaseState.value = DatabaseState.Ready(instance)
-        val duration = android.os.SystemClock.elapsedRealtime() - startTime
-        android.util.Log.i("RemmiDatabase", "Asynchronous database initialization completed in ${duration}ms")
-        instance
+        d
       }
+      deferred!!.await()
     }
 
     data class PurgeResult(
@@ -671,38 +670,6 @@ abstract class RemmiDatabase : RoomDatabase() {
       val errors: List<String> = emptyList(),
     )
 
-    fun getDatabase(context: Context): RemmiDatabase {
-      val existing = INSTANCE
-      if (existing != null && existing.isOpen) {
-        return existing
-      }
-      return synchronized(this) {
-        if (isWipeActive) {
-          throw IllegalStateException("Cannot open database during an active Panic Wipe (state=$wipeState)")
-        }
-        var instance = INSTANCE
-        if (instance != null && instance.isOpen) {
-          return@synchronized instance
-        }
-        try {
-          net.sqlcipher.database.SQLiteDatabase.loadLibs(context.applicationContext)
-        } catch (_: Throwable) {}
-        val passphrase = getOrCreatePassphrase(context.applicationContext)
-        val supportFactory = SupportFactory(passphrase, null, false)
-        instance = Room.databaseBuilder(
-          context.applicationContext,
-          RemmiDatabase::class.java,
-          "remmi_vault.db"
-        )
-          .openHelperFactory(supportFactory)
-          .fallbackToDestructiveMigration(false)
-          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-          .build()
-        INSTANCE = instance
-        _databaseState.value = DatabaseState.Ready(instance)
-        instance
-      }
-    }
 
     fun closeDatabase() {
       synchronized(this) {

@@ -1288,7 +1288,7 @@ fun ReaderView(
                       isTranslating = true
                       translationProgress = 0.1f
                       try {
-                        val translated = ReaderTranslator.translateArticle(
+                        val translated = ReaderTranslator.translateArticle(context, 
                           article = art,
                           targetLanguageCode = lang.code,
                           isGhost = isGhostRoute,
@@ -1343,7 +1343,7 @@ fun ReaderView(
           onClick = {
             showTranslateSheet = false
             displayArticle?.let { art ->
-              ReaderTranslator.launchExternalTranslator(context, art.sourceUrl)
+              ReaderTranslator.launchExternalTranslator(context, art.sourceUrl, isGhostRoute)
             }
           },
           colors = ButtonDefaults.buttonColors(

@@ -13,6 +13,21 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
     private const val TAG = "GeckoPreferenceCtrl"
   }
 
+  suspend fun getPreferences(keys: List<String>): Map<String, Any?> = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+    try {
+      NativePrefCtrl.getGeckoPrefs(keys.toMutableList()).accept(
+        { result ->
+          if (cont.isActive) cont.resume(result as? Map<String, Any?> ?: emptyMap())
+        },
+        {
+          if (cont.isActive) cont.resume(emptyMap())
+        }
+      )
+    } catch (t: Throwable) {
+      if (cont.isActive) cont.resume(emptyMap())
+    }
+  }
+
   suspend fun applyPreferences(prefs: Map<String, Any>, branch: Int = PREF_BRANCH_USER): Boolean = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
     if (prefs.isEmpty()) {
       cont.resume(true)
@@ -25,12 +40,11 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
         is String -> setList.add(SetGeckoPreference.setStringPref(name, value, branch))
         is Int -> setList.add(SetGeckoPreference.setIntPref(name, value, branch))
         is Boolean -> setList.add(SetGeckoPreference.setBoolPref(name, value, branch))
-        // double/float/long mappings are not strictly supported by the Gecko pref API (usually only Int/Boolean/String).
-        // Let's fallback to int for numbers, string for others.
-        is Double -> setList.add(SetGeckoPreference.setIntPref(name, value.toInt(), branch))
-        is Float -> setList.add(SetGeckoPreference.setIntPref(name, value.toInt(), branch))
-        is Long -> setList.add(SetGeckoPreference.setIntPref(name, value.toInt(), branch))
-        else -> setList.add(SetGeckoPreference.setStringPref(name, value.toString(), branch))
+        else -> {
+          Log.e(TAG, "Unsupported preference type for key=$name: ${value::class.java.simpleName}")
+          if (cont.isActive) cont.resume(false)
+          return@suspendCancellableCoroutine
+        }
       }
     }
     

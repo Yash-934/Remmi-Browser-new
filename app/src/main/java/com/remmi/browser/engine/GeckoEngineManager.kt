@@ -24,10 +24,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebResponse
@@ -114,7 +122,7 @@ class GeckoEngineManager private constructor(private val context: Context) {
     _initState.value = GeckoInitState.INITIALIZING
     Log.i(TAG, "STATE_LOG: GECKO_INIT_START (time=${android.os.SystemClock.elapsedRealtime()})")
 
-    mainHandler.post {
+    CoroutineScope(Dispatchers.Main.immediate).launch {
       try {
         initializeRuntimeInternal()
         _initState.value = GeckoInitState.READY
@@ -126,7 +134,7 @@ class GeckoEngineManager private constructor(private val context: Context) {
     }
   }
 
-  private fun initializeRuntimeInternal() {
+  private suspend fun initializeRuntimeInternal() {
     assertMainThread("INITIALIZE_RUNTIME_INTERNAL")
     if (runtime != null) {
       _initState.value = GeckoInitState.READY
@@ -188,12 +196,14 @@ class GeckoEngineManager private constructor(private val context: Context) {
         }
       }
 
-      rt.webExtensionController
-        .ensureBuiltIn(extensionUri, "extension@remmi.browser")
-        .accept(
-          { ext: WebExtension? -> installPromptHandler(ext) },
-          { throwable: Throwable? -> failureHandler(throwable) }
-        )
+      suspendCancellableCoroutine<Unit> { cont ->
+        rt.webExtensionController
+          .ensureBuiltIn(extensionUri, "extension@remmi.browser")
+          .accept(
+            { ext: WebExtension? -> installPromptHandler(ext); cont.resume(Unit) },
+            { throwable: Throwable? -> failureHandler(throwable); cont.resume(Unit) }
+          )
+      }
     } catch (e: Exception) {
       Log.w(TAG, "WebExtension installation skipped: ${e.message}")
       blockExtension.setExtensionFailed(e.message ?: "Skipped")
@@ -201,7 +211,6 @@ class GeckoEngineManager private constructor(private val context: Context) {
     }
 
     runtime = rt
-    _initState.value = GeckoInitState.READY
     applyPrivacyProfile(PrivacyProfile.SHIELD)
     val duration = android.os.SystemClock.elapsedRealtime() - startTime
     Log.i(TAG, "GeckoRuntime initialization completed in ${duration}ms (READY)")
@@ -363,6 +372,21 @@ class GeckoEngineManager private constructor(private val context: Context) {
 
     // Wire Navigation delegate
     newSession.navigationDelegate = object : GeckoSession.NavigationDelegate {
+      override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
+        val url = request.uri
+        val tab = TabManager.getInstance().getTab(tabId)
+        val isGhost = (tab?.profile == PrivacyProfile.GHOST) || (currentProfile == PrivacyProfile.GHOST)
+        
+        if (isGhost) {
+          val isHttp = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("about:") || url.startsWith("file:") || url.startsWith("blob:") || url.startsWith("data:")
+          if (!isHttp) {
+            Log.w(TAG, "Blocked non-HTTP intent/scheme in Ghost Mode: $url")
+            return GeckoResult.fromValue(AllowOrDeny.DENY)
+          }
+        }
+        return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+      }
+
       override fun onLocationChange(
         session: GeckoSession,
         url: String?,
@@ -528,10 +552,8 @@ class GeckoEngineManager private constructor(private val context: Context) {
   ) = withContext(Dispatchers.Main.immediate) {
     assertMainThread("ATTACH_VIEW id=$tabId")
     sessionCallbacks[tabId] = callbacks
-    if (_initState.value == GeckoInitState.NOT_STARTED) {
-      Log.d(TAG, "[GECKO] attachView requested init on tabId=$tabId")
-      initializeRuntimeAsync()
-    }
+    
+    // Do NOT initialize GeckoRuntime here. It should only happen in loadUrl for actual navigations.
     
     if (_initState.value != GeckoInitState.READY) {
       Log.d(TAG, "[GECKO] attachView suspending for runtime readiness on tabId=$tabId")
@@ -633,6 +655,12 @@ class GeckoEngineManager private constructor(private val context: Context) {
     }
     assertMainThread("LOAD_URL id=$tabId")
     android.util.Log.i(TAG, "STATE_LOG: FIRST_PAGE_START (time=${android.os.SystemClock.elapsedRealtime()})")
+    
+    if (_initState.value == GeckoInitState.NOT_STARTED) {
+      Log.d(TAG, "[GECKO] loadUrl requesting init on tabId=$tabId")
+      initializeRuntimeAsync()
+    }
+
     if (runtime == null || _initState.value != GeckoInitState.READY) {
       Log.d(TAG, "[GECKO] loadUrl runtime not ready yet, deferring 50ms for tabId=$tabId")
       mainHandler.postDelayed({ loadUrl(tabId, targetUrl) }, 50)
