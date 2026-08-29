@@ -90,7 +90,7 @@ class AdblockBridge {
   suspend fun addCustomRule(rule: String) = mutex.withLock {
     val trimmed = rule.trim()
     if (trimmed.startsWith("@@")) {
-      allowList.add(trimmed.removePrefix("@@").removePrefix("||"))
+      allowList.add(trimmed.removePrefix("@@").removePrefix("||").removeSuffix("^"))
     } else if (trimmed.startsWith("||")) {
       blockedHostnames.add(trimmed.removePrefix("||").removeSuffix("^"))
     } else {
@@ -111,12 +111,41 @@ class AdblockBridge {
     blockedSubstrings.clear()
     allowList.clear()
 
+    // Re-seed default tracker domains in Kotlin fallback
+    val defaultDomains = listOf(
+      "doubleclick.net", "googlesyndication.com", "google-analytics.com",
+      "googletagmanager.com", "adservice.google.com", "admob.com",
+      "adnxs.com", "adsrvr.org", "criteo.com", "criteo.net",
+      "outbrain.com", "taboola.com", "scorecardresearch.com",
+      "quantserve.com", "quantcount.com", "moatads.com",
+      "pubmatic.com", "rubiconproject.com", "openx.net",
+      "casalemedia.com", "applovin.com", "unityads.unity3d.com",
+      "vungle.com", "appsflyer.com", "branch.io", "adjust.com",
+      "kochava.com", "singular.net", "facebook.net/tr",
+      "connect.facebook.net", "ads-twitter.com", "analytics.twitter.com",
+      "bat.bing.com", "clarity.ms", "hotjar.com", "mouseflow.com",
+      "segment.io", "segment.com", "mixpanel.com", "amplitude.com",
+      "newrelic.com", "optimizely.com", "smartadserver.com",
+      "yieldmo.com", "indexww.com", "chartbeat.com", "adroll.com",
+      "advertising.com", "amazon-adsystem.com", "bidswitch.net",
+      "revcontent.com", "mgid.com", "zergnet.com", "popads.net"
+    )
+    blockedHostnames.addAll(defaultDomains)
+
+    val defaultPatterns = listOf(
+      "/ads/", "/ad-banner", "/advertisement", "/trackers/",
+      "pixel.gif", "beacon.js", "analytics.js", "gtag/js",
+      "pagead2.googlesyndication.com", "adserver.", "adsystem.",
+      "telemetry.", "tracking.", "statcounter.com"
+    )
+    blockedSubstrings.addAll(defaultPatterns)
+
     // Also parse into Kotlin memory fallback
     rulesText.lines().forEach { line ->
       val trimmed = line.trim()
       if (trimmed.isNotEmpty() && !trimmed.startsWith("!")) {
         if (trimmed.startsWith("@@")) {
-          allowList.add(trimmed.removePrefix("@@").removePrefix("||"))
+          allowList.add(trimmed.removePrefix("@@").removePrefix("||").removeSuffix("^"))
         } else if (trimmed.startsWith("||")) {
           blockedHostnames.add(trimmed.removePrefix("||").removeSuffix("^"))
         } else {
@@ -136,7 +165,6 @@ class AdblockBridge {
           totalBlockedCount.incrementAndGet()
           return true
         }
-        return false
       } catch (e: Throwable) {
         Log.e(TAG, "Native check URL failed, checking fallback rules", e)
       }

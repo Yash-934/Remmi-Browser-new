@@ -49,4 +49,37 @@ class DatabaseHardeningTest {
       RemmiDatabase.getDatabase(context)
     }
   }
+
+  @Test
+  fun testEncryptedDatabaseCannotBeOpenedAsPlaintextSqlite() {
+    val dbFile = context.getDatabasePath("remmi_vault_encrypted_test.db")
+    dbFile.parentFile?.mkdirs()
+
+    // Write 4096 bytes of encrypted pseudo-random ciphertext (representing a SQLCipher page with salt/IV)
+    val encryptedCiphertext = ByteArray(4096).apply {
+      java.security.SecureRandom().nextBytes(this)
+    }
+    dbFile.writeBytes(encryptedCiphertext)
+    assertTrue(dbFile.exists())
+
+    // Attempting to open encrypted database file as plaintext SQLite must fail with SQLiteException
+    try {
+      assertThrows(android.database.sqlite.SQLiteException::class.java) {
+        val plaintextDb = android.database.sqlite.SQLiteDatabase.openDatabase(
+          dbFile.absolutePath,
+          null,
+          android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+        )
+        try {
+          plaintextDb.rawQuery("SELECT * FROM sqlite_master", null).use { cursor ->
+            cursor.moveToFirst()
+          }
+        } finally {
+          plaintextDb.close()
+        }
+      }
+    } finally {
+      dbFile.delete()
+    }
+  }
 }

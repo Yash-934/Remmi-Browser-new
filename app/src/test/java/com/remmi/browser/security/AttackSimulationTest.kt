@@ -7,6 +7,9 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.File
 import java.net.InetAddress
 
@@ -20,6 +23,8 @@ import java.net.InetAddress
  * 5. Recursive Sandbox Leftover Artifact Detection
  * 6. Password Vault Authentication Gate for Key Rotation
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class AttackSimulationTest {
 
   @Test
@@ -29,8 +34,9 @@ class AttackSimulationTest {
     val result = RedirectInspector.inspectUrl("https://sensitive-target.org", isGhost = true, socksPort = null)
 
     // Defended: Must NOT resolve clearnet when in Ghost Mode without active Tor socks proxy
-    assertTrue("Clearnet leak must be blocked in Ghost mode without Tor proxy", result.error != null)
-    assertTrue("Error should state Tor / Ghost mode enforcement", result.error!!.contains("Tor", ignoreCase = true) || result.error!!.contains("Ghost", ignoreCase = true))
+    val error = result.error
+    assertNotNull("Clearnet leak must be blocked in Ghost mode without Tor proxy", error)
+    assertTrue("Error should state Tor / Ghost mode enforcement", error!!.contains("Tor", ignoreCase = true) || error.contains("Ghost", ignoreCase = true))
   }
 
   @Test

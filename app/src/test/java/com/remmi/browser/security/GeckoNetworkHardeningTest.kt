@@ -92,7 +92,7 @@ class GeckoNetworkHardeningTest {
 
   @Test
   fun testGeckoPreferenceControllerConstants() {
-    assertEquals(1, GeckoPreferenceController.PREF_BRANCH_USER)
-    assertEquals(0, GeckoPreferenceController.PREF_BRANCH_DEFAULT)
+    assertEquals(org.mozilla.geckoview.GeckoPreferenceController.PREF_BRANCH_USER, GeckoPreferenceController.PREF_BRANCH_USER)
+    assertEquals(org.mozilla.geckoview.GeckoPreferenceController.PREF_BRANCH_DEFAULT, GeckoPreferenceController.PREF_BRANCH_DEFAULT)
   }
 }

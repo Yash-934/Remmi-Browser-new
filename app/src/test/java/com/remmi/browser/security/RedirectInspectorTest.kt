@@ -4,7 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class RedirectInspectorTest {
 
   @Test
@@ -142,8 +147,9 @@ class RedirectInspectorTest {
   @Test
   fun testGhostModeRequiresTorSocksProxy() = kotlinx.coroutines.test.runTest {
     val result = RedirectInspector.inspectUrl("https://example.com", isGhost = true, socksPort = null)
-    assertTrue("Should fail-safe when Ghost mode has no Tor route", result.error != null)
-    assertTrue("Error should mention Tor or Ghost", result.error!!.contains("Tor", ignoreCase = true) || result.error!!.contains("Ghost", ignoreCase = true))
+    val error = result.error
+    org.junit.Assert.assertNotNull("Should fail-safe when Ghost mode has no Tor route", error)
+    assertTrue("Error should mention Tor or Ghost", error!!.contains("Tor", ignoreCase = true) || error.contains("Ghost", ignoreCase = true))
   }
 }
 
