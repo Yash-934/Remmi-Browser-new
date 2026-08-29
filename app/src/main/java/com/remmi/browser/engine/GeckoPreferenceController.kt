@@ -4,6 +4,7 @@ import android.util.Log
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoPreferenceController as NativePrefCtrl
 import org.mozilla.geckoview.GeckoPreferenceController.SetGeckoPreference
+import kotlin.coroutines.resume
 
 class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
   companion object {
@@ -12,8 +13,11 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
     private const val TAG = "GeckoPreferenceCtrl"
   }
 
-  fun applyPreferences(prefs: Map<String, Any>, branch: Int = PREF_BRANCH_USER): Boolean {
-    if (prefs.isEmpty()) return true
+  suspend fun applyPreferences(prefs: Map<String, Any>, branch: Int = PREF_BRANCH_USER): Boolean = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+    if (prefs.isEmpty()) {
+      cont.resume(true)
+      return@suspendCancellableCoroutine
+    }
     
     val setList = mutableListOf<SetGeckoPreference<*>>()
     for ((name, value) in prefs) {
@@ -30,24 +34,41 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
       }
     }
     
-    return try {
+    try {
       NativePrefCtrl.setGeckoPrefs(setList).accept(
         { result ->
-          val anyFailed = result?.values?.any { it != true } == true
-          if (anyFailed) {
-            Log.w(TAG, "Some Gecko preferences were rejected")
+          val failedPrefs = result?.filterValues { it != true }?.keys ?: emptySet()
+          if (failedPrefs.isNotEmpty()) {
+            val criticalFails = failedPrefs.filter { isRequiredForGhost(it) }
+            Log.e(TAG, "[ROUTE] GECKO_PREF_FAILURE error=Some preferences rejected: $failedPrefs")
+            if (criticalFails.isNotEmpty()) {
+              Log.e(TAG, "[ROUTE] GECKO_PREF_FAILURE error=CRITICAL Ghost preferences failed: $criticalFails")
+              if (cont.isActive) cont.resume(false)
+            } else {
+              Log.w(TAG, "Non-critical preferences failed: $failedPrefs")
+              if (cont.isActive) cont.resume(true)
+            }
           } else {
             Log.d(TAG, "Successfully applied ${prefs.size} native Gecko preferences (branch=$branch)")
+            if (cont.isActive) cont.resume(true)
           }
         },
         { error ->
-          Log.w(TAG, "Failed to apply Gecko preferences: ${error?.message}")
+          Log.e(TAG, "[ROUTE] GECKO_PREF_FAILURE error=${error?.message}", error)
+          if (cont.isActive) cont.resume(false)
         }
       )
-      true
     } catch (t: Throwable) {
-      Log.e(TAG, "Failed to apply Gecko preferences: ${t.message}", t)
-      false
+      Log.e(TAG, "[ROUTE] GECKO_PREF_FAILURE exception=${t.javaClass.simpleName} message=${t.message}", t)
+      if (cont.isActive) cont.resume(false)
     }
+  }
+
+  private fun isRequiredForGhost(prefName: String): Boolean {
+    return prefName.startsWith("network.proxy.") ||
+           prefName.startsWith("network.dns.") ||
+           prefName == "privacy.resistFingerprinting" ||
+           prefName == "privacy.firstparty.isolate" ||
+           prefName == "media.peerconnection.enabled"
   }
 }

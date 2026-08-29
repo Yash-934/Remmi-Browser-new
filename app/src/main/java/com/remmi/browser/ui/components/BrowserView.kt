@@ -97,6 +97,7 @@ fun BrowserView(
           progressFloat = 0.1f
         } else {
           progressFloat = 0f
+          android.util.Log.i("AppStartup", "STATE_LOG: FIRST_PAGE_STOP (time=${android.os.SystemClock.elapsedRealtime()})")
           // Page load completed, capture preview thumbnail safely
           geckoViewRef?.let { gv ->
             com.remmi.browser.engine.TabThumbnailManager.getInstance(context).captureGeckoView(tab.id, gv)

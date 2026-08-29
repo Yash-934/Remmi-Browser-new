@@ -12,6 +12,7 @@ data class RouteKey(
   val profile: PrivacyProfile,
   val socksPort: Int,
   val generation: Long,
+  val runtimeHash: Int
 )
 
 object NetworkHardening {
@@ -144,19 +145,24 @@ object NetworkHardening {
     )
   }
 
-  fun applyTorNetworkSettings(
+  suspend fun applyTorNetworkSettings(
     runtime: GeckoRuntime?,
     port: Int? = CurrentTorRoute.currentSocksPort,
     generation: Long = CurrentTorRoute.currentGeneration,
     settings: com.remmi.browser.storage.BrowserSettings? = null,
   ): Boolean {
+    if (runtime == null) {
+      Log.w(TAG, "Cannot apply Tor network settings: Runtime is null")
+      DebugLogManager.log("[ROUTE] NOT_READY profile=GHOST reason=no_runtime")
+      return false
+    }
     if (port == null || port <= 0) {
       Log.w(TAG, "Cannot apply Tor network settings: Invalid port $port")
       DebugLogManager.log("[ROUTE] NOT_READY profile=GHOST reason=no_port")
       return false
     }
 
-    val targetKey = RouteKey(PrivacyProfile.GHOST, port, generation)
+    val targetKey = RouteKey(PrivacyProfile.GHOST, port, generation, System.identityHashCode(runtime))
     if (lastAppliedRouteKey == targetKey) {
       // Idempotent: configuration already active
       return true
@@ -173,17 +179,18 @@ object NetworkHardening {
       lastAppliedRouteKey = targetKey
       DebugLogManager.log("[ROUTE] NATIVE_GECKO_APPLIED profile=GHOST port=$port")
     } else {
-      DebugLogManager.log("[ROUTE] NATIVE_GECKO_DISPATCHED profile=GHOST port=$port")
+      DebugLogManager.log("[ROUTE] gecko_proxy_failed profile=GHOST port=$port")
     }
     return applied
   }
 
-  fun applyShieldNetworkSettings(
+  suspend fun applyShieldNetworkSettings(
     runtime: GeckoRuntime?,
     generation: Long = CurrentTorRoute.currentGeneration,
     settings: com.remmi.browser.storage.BrowserSettings? = null,
   ): Boolean {
-    val targetKey = RouteKey(PrivacyProfile.SHIELD, 0, generation)
+    if (runtime == null) return false
+    val targetKey = RouteKey(PrivacyProfile.SHIELD, 0, generation, System.identityHashCode(runtime))
     if (lastAppliedRouteKey == targetKey) {
       return true
     }
@@ -199,7 +206,7 @@ object NetworkHardening {
       lastAppliedRouteKey = targetKey
       DebugLogManager.log("[ROUTE] NATIVE_GECKO_APPLIED profile=SHIELD")
     } else {
-      DebugLogManager.log("[ROUTE] NATIVE_GECKO_DISPATCHED profile=SHIELD")
+      DebugLogManager.log("[ROUTE] gecko_proxy_failed profile=SHIELD")
     }
     return applied
   }

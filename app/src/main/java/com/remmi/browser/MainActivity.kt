@@ -46,7 +46,40 @@ enum class ScreenRoute {
 
 class MainActivity : FragmentActivity() {
 
+  private var watchdogThread: Thread? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
+    val startTime = android.os.SystemClock.elapsedRealtime()
+    android.util.Log.i("AppStartup", "STATE_LOG: APP_START (time=$startTime)")
+
+    if (com.remmi.browser.BuildConfig.DEBUG) {
+      android.os.StrictMode.setThreadPolicy(
+        android.os.StrictMode.ThreadPolicy.Builder()
+          .detectDiskReads()
+          .detectDiskWrites()
+          .detectNetwork()
+          .penaltyLog()
+          .build()
+      )
+      
+      watchdogThread = Thread {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        while (!Thread.currentThread().isInterrupted) {
+          val responded = java.util.concurrent.atomic.AtomicBoolean(false)
+          handler.post { responded.set(true) }
+          try {
+            Thread.sleep(1000)
+            if (!responded.get()) {
+              val geckoState = com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initState.value.name
+              android.util.Log.e("ANR_WATCHDOG", "Main thread blocked for >1s! GeckoState=$geckoState, Thread=${Thread.currentThread().name}")
+            }
+          } catch (e: InterruptedException) {
+            break
+          }
+        }
+      }.apply { start() }
+    }
+
     super.onCreate(savedInstanceState)
 
     enableEdgeToEdge()
@@ -64,22 +97,14 @@ class MainActivity : FragmentActivity() {
       else -> ScreenRoute.WELCOME
     }
 
-    // Initialize Gecko runtime asynchronously on Main looper without blocking initial frame layout
-    if (!isPendingWipe) {
-      lifecycleScope.launch(Dispatchers.Main) {
-        try {
-          com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
-        } catch (e: Throwable) {
-          android.util.Log.e("MainActivity", "GeckoEngine initialization error: ${e.message}", e)
-        }
-      }
-    }
+    android.util.Log.i("AppStartup", "STATE_LOG: UI_CONTENT_SET (time=${android.os.SystemClock.elapsedRealtime()})")
 
     setContent {
       val settings by settingsRepo.settings.collectAsState()
       var crashResultToShow by remember { mutableStateOf<CrashExportResult?>(null) }
 
       androidx.compose.runtime.LaunchedEffect(Unit) {
+        android.util.Log.i("AppStartup", "STATE_LOG: FIRST_FRAME (time=${android.os.SystemClock.elapsedRealtime()})")
         kotlinx.coroutines.withContext(Dispatchers.IO) {
           val pendingCrash = CrashHandlerHelper.checkAndExportPendingCrash(this@MainActivity)
           if (pendingCrash != null) {
@@ -121,7 +146,7 @@ class MainActivity : FragmentActivity() {
               com.remmi.browser.ui.screens.EmergencyWipeRecoveryScreen(
                 onRecoveryComplete = {
                   // After successful verification, initialize runtime and proceed to Browser
-                  com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
+                  com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntimeAsync()
                   currentScreen = ScreenRoute.BROWSER
                 }
               )
@@ -178,6 +203,11 @@ class MainActivity : FragmentActivity() {
         }
       }
     }
+  }
+
+  override fun onDestroy() {
+    watchdogThread?.interrupt()
+    super.onDestroy()
   }
 
   override fun onNewIntent(intent: Intent) {
