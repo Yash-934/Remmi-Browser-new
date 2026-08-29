@@ -349,13 +349,13 @@ private fun NeonParticlesAnimation(
   )
 
   val particles = remember {
-    List(32) {
+    List(18) {
       NeonParticle(
         baseX = Random.nextFloat(),
         baseY = Random.nextFloat(),
         speedX = (Random.nextFloat() - 0.5f) * 0.08f,
         speedY = (Random.nextFloat() - 0.5f) * 0.08f,
-        radius = 2f + Random.nextFloat() * 3f,
+        radius = 2f + Random.nextFloat() * 2.5f,
         isSecondary = Random.nextBoolean()
       )
     }
@@ -367,32 +367,37 @@ private fun NeonParticlesAnimation(
 
     drawRect(color = backgroundColor)
 
-    val points = particles.map { p ->
+    val xCoords = FloatArray(particles.size)
+    val yCoords = FloatArray(particles.size)
+
+    for (i in particles.indices) {
+      val p = particles[i]
       val rad = Math.toRadians((time + (p.baseX * 100f)).toDouble()).toFloat()
       val x = ((p.baseX + sin(rad) * 0.05f + (p.speedX * time * 0.05f)) % 1f + 1f) % 1f * width
       val y = ((p.baseY + (p.speedY * time * 0.05f)) % 1f + 1f) % 1f * height
+      xCoords[i] = x
+      yCoords[i] = y
       val color = if (p.isSecondary) secondaryColor else primaryColor
       drawCircle(
         color = color.copy(alpha = 0.45f),
         radius = p.radius,
         center = Offset(x, y)
       )
-      Offset(x, y)
     }
 
     // Connect close particles with faint neon lines
-    val maxDistSq = 110f * 110f
-    for (i in points.indices) {
-      for (j in i + 1 until points.size) {
-        val dx = points[i].x - points[j].x
-        val dy = points[i].y - points[j].y
+    val maxDistSq = 90f * 90f
+    for (i in 0 until particles.size) {
+      for (j in i + 1 until particles.size) {
+        val dx = xCoords[i] - xCoords[j]
+        val dy = yCoords[i] - yCoords[j]
         val distSq = dx * dx + dy * dy
         if (distSq < maxDistSq) {
           val alpha = (1f - (distSq / maxDistSq)) * 0.18f
           drawLine(
             color = primaryColor.copy(alpha = alpha),
-            start = points[i],
-            end = points[j],
+            start = Offset(xCoords[i], yCoords[i]),
+            end = Offset(xCoords[j], yCoords[j]),
             strokeWidth = 1f
           )
         }
@@ -655,7 +660,7 @@ private fun LightGeometricDotsAnimation(
     initialValue = 0f,
     targetValue = 6.28318f,
     animationSpec = infiniteRepeatable(
-      animation = tween(4000, easing = LinearEasing),
+      animation = tween(5000, easing = LinearEasing),
       repeatMode = RepeatMode.Restart
     ),
     label = "dots_wave"
@@ -665,21 +670,23 @@ private fun LightGeometricDotsAnimation(
     drawRect(color = backgroundColor)
     val w = size.width
     val h = size.height
-    val spacing = 28.dp.toPx()
+    val spacing = 40.dp.toPx()
 
     val cols = (w / spacing).toInt() + 1
     val rows = (h / spacing).toInt() + 1
+    val halfW = w / 2f
+    val halfH = h / 2f
 
     for (r in 0 until rows) {
+      val y = r * spacing
+      val dy = (y - halfH) / h
       for (c in 0 until cols) {
         val x = c * spacing
-        val y = r * spacing
-        val dx = (x - w / 2f) / w
-        val dy = (y - h / 2f) / h
+        val dx = (x - halfW) / w
         val distFromCenter = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-        val pulse = (sin((wavePhase - distFromCenter * 5f).toDouble()).toFloat() + 1f) / 2f
-        val dotRadius = 1.5.dp.toPx() + pulse * 1.5.dp.toPx()
-        val alpha = (0.06f + pulse * 0.14f).coerceIn(0f, 1f)
+        val pulse = (sin((wavePhase - distFromCenter * 4f).toDouble()).toFloat() + 1f) * 0.5f
+        val dotRadius = 1.2.dp.toPx() + pulse * 1.2.dp.toPx()
+        val alpha = (0.05f + pulse * 0.12f).coerceIn(0f, 1f)
 
         drawCircle(
           color = primaryColor.copy(alpha = alpha),
@@ -709,7 +716,7 @@ private fun LightConstellationAnimation(
   )
 
   val nodes = remember {
-    List(18) {
+    List(14) {
       Offset(
         x = Random.nextFloat(),
         y = Random.nextFloat()
@@ -722,27 +729,32 @@ private fun LightConstellationAnimation(
     val w = size.width
     val h = size.height
 
-    val animatedNodes = nodes.mapIndexed { idx, pt ->
+    val xCoords = FloatArray(nodes.size)
+    val yCoords = FloatArray(nodes.size)
+
+    for (idx in nodes.indices) {
+      val pt = nodes[idx]
       val offsetX = 0.03f * sin((time + idx).toDouble()).toFloat()
       val offsetY = 0.03f * kotlin.math.cos((time + idx * 0.8f).toDouble()).toFloat()
-      Offset((pt.x + offsetX).coerceIn(0.05f, 0.95f) * w, (pt.y + offsetY).coerceIn(0.05f, 0.95f) * h)
+      xCoords[idx] = (pt.x + offsetX).coerceIn(0.05f, 0.95f) * w
+      yCoords[idx] = (pt.y + offsetY).coerceIn(0.05f, 0.95f) * h
     }
 
     // Connect close nodes
-    val maxDist = 120.dp.toPx()
-    for (i in animatedNodes.indices) {
-      for (j in i + 1 until animatedNodes.size) {
-        val p1 = animatedNodes[i]
-        val p2 = animatedNodes[j]
-        val dx = p1.x - p2.x
-        val dy = p1.y - p2.y
-        val dist = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-        if (dist < maxDist) {
+    val maxDist = 110.dp.toPx()
+    val maxDistSq = maxDist * maxDist
+    for (i in 0 until nodes.size) {
+      for (j in i + 1 until nodes.size) {
+        val dx = xCoords[i] - xCoords[j]
+        val dy = yCoords[i] - yCoords[j]
+        val distSq = dx * dx + dy * dy
+        if (distSq < maxDistSq) {
+          val dist = sqrt(distSq.toDouble()).toFloat()
           val alpha = ((1f - dist / maxDist) * 0.12f).coerceIn(0f, 1f)
           drawLine(
             color = primaryColor.copy(alpha = alpha),
-            start = p1,
-            end = p2,
+            start = Offset(xCoords[i], yCoords[i]),
+            end = Offset(xCoords[j], yCoords[j]),
             strokeWidth = 1.dp.toPx()
           )
         }
@@ -750,16 +762,19 @@ private fun LightConstellationAnimation(
     }
 
     // Draw node dots
-    animatedNodes.forEach { pt ->
+    val dotRadius = 2.5.dp.toPx()
+    val auraRadius = 6.dp.toPx()
+    for (idx in nodes.indices) {
+      val center = Offset(xCoords[idx], yCoords[idx])
       drawCircle(
         color = primaryColor.copy(alpha = 0.28f),
-        radius = 3.dp.toPx(),
-        center = pt
+        radius = dotRadius,
+        center = center
       )
       drawCircle(
         color = primaryColor.copy(alpha = 0.08f),
-        radius = 8.dp.toPx(),
-        center = pt
+        radius = auraRadius,
+        center = center
       )
     }
   }

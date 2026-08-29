@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.remmi.browser.engine.TabManager
 import com.remmi.browser.security.PanicWipeManager
@@ -62,11 +63,6 @@ class MainActivity : FragmentActivity() {
 
     val isPendingWipe = PanicWipeManager.isWipePending(applicationContext)
 
-    // IF no pending wipe, perform normal Gecko initialization immediately
-    if (!isPendingWipe) {
-      com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
-    }
-
     val prefs = getSharedPreferences("remmi_app_state", Context.MODE_PRIVATE)
     val hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false)
     val settingsRepo = SettingsRepository.getInstance(applicationContext)
@@ -76,6 +72,17 @@ class MainActivity : FragmentActivity() {
       isPendingWipe -> ScreenRoute.EMERGENCY_RECOVERY
       incomingUrl != null || hasSeenOnboarding -> ScreenRoute.BROWSER
       else -> ScreenRoute.WELCOME
+    }
+
+    // Initialize Gecko runtime asynchronously after immediate UI composition to avoid startup freeze
+    if (!isPendingWipe) {
+      lifecycleScope.launch(Dispatchers.Main) {
+        try {
+          com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
+        } catch (e: Throwable) {
+          android.util.Log.e("MainActivity", "Async GeckoEngine initialization error: ${e.message}", e)
+        }
+      }
     }
 
     setContent {

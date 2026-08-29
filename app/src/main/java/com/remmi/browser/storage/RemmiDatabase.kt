@@ -600,22 +600,18 @@ abstract class RemmiDatabase : RoomDatabase() {
           return@synchronized instance
         }
         val passphrase = getOrCreatePassphrase(context)
-        try {
-          val supportFactory = SupportFactory(passphrase)
-          instance = Room.databaseBuilder(
-            context.applicationContext,
-            RemmiDatabase::class.java,
-            "remmi_vault.db"
-          )
-            .openHelperFactory(supportFactory)
-            .fallbackToDestructiveMigration()
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-            .build()
-          INSTANCE = instance
-          instance
-        } finally {
-          passphrase.fill(0) // Immediate in-place memory zeroization of temporary passphrase
-        }
+        val supportFactory = SupportFactory(passphrase, null, false)
+        instance = Room.databaseBuilder(
+          context.applicationContext,
+          RemmiDatabase::class.java,
+          "remmi_vault.db"
+        )
+          .openHelperFactory(supportFactory)
+          .fallbackToDestructiveMigration(false)
+          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+          .build()
+        INSTANCE = instance
+        instance
       }
     }
 

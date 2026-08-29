@@ -201,7 +201,7 @@ class FilterManager(
           }
         }
       }
-      if (true) {
+      if (combinedRules.isNotBlank()) {
         return@withLock adblockBridge.compileRules(combinedRules.toString())
       }
       return@withLock 0

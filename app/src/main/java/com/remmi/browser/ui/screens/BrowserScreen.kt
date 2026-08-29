@@ -301,8 +301,12 @@ fun BrowserScreen(
     }
   }
 
-  // Auto-save tabs to encrypted database whenever tabs change (strictly exclude Incognito / Ghost tabs)
-  LaunchedEffect(tabs, isSessionRestored) {
+  // Auto-save tabs to encrypted database whenever tab list changes (strictly exclude Incognito / Ghost tabs)
+  val persistKey = remember(tabs) {
+    tabs.filter { it.profile != PrivacyProfile.GHOST && it.profile != PrivacyProfile.INCOGNITO }
+      .joinToString("|") { "${it.id}:${it.url}:${it.title}" }
+  }
+  LaunchedEffect(persistKey, isSessionRestored) {
     if (isSessionRestored && !settings.clearDataOnExit) {
       withContext(Dispatchers.IO) {
         val nonPrivateTabs = tabs.filter { it.profile != PrivacyProfile.GHOST && it.profile != PrivacyProfile.INCOGNITO }

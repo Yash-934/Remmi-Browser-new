@@ -45,9 +45,14 @@ class RemmiApp : Application(), SingletonImageLoader.Factory {
     com.remmi.browser.util.CrashHandlerHelper.install(this)
 
     // Initialize local storage and settings in background to keep startup instant
-    val executor = Executors.newSingleThreadExecutor()
+    val executor = Executors.newSingleThreadExecutor { r ->
+      Thread(r, "RemmiApp-Init").apply {
+        priority = Thread.MIN_PRIORITY
+      }
+    }
     executor.execute {
       try {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
         Log.i("RemmiApp", "Background initialization started...")
         AdblockBridge.getInstance()
         RemmiDatabase.getDatabase(this)
