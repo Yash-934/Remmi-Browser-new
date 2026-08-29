@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-adblock = "0.8"
+adblock = { version = "0.8", default-features = false }
 rmp = "=0.8.11"
 jni = { version = "0.21", default-features = false }
 lazy_static = "1.4"

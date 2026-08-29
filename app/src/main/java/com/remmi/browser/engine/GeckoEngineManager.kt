@@ -191,6 +191,19 @@ class GeckoEngineManager private constructor(private val context: Context) {
     } else {
       NetworkHardening.applyShieldNetworkSettings(rt, CurrentTorRoute.currentGeneration, settings)
     }
+    
+    // Ensure site-specific overrides have precedence (P1-2)
+    val currentTabs = TabManager.getInstance().tabs.value
+    for (tab in currentTabs) {
+      if (tab.url.isNotBlank() && tab.url != "about:blank") {
+        try {
+          val host = java.net.URI(if (tab.url.contains("://")) tab.url else "https://${tab.url}").host
+          if (!host.isNullOrBlank()) {
+            applySiteSecurityPolicy(tab.id, host)
+          }
+        } catch (_: Exception) {}
+      }
+    }
   }
 
   fun applySiteSecurityPolicy(tabId: String, host: String) {

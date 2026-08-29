@@ -184,28 +184,33 @@ class FilterManager(
     return _subscriptions.value.filter { it.enabled }.sumOf { it.ruleCount }
   }
 
-  private fun loadPersistedRulesIntoBridge() {
-    CoroutineScope(Dispatchers.IO).launch {
-      mutex.withLock {
-        val dir = filterDir ?: return@withLock
-        val combinedRules = StringBuilder()
-        for (sub in _subscriptions.value) {
-          if (sub.enabled) {
-            val file = File(dir, "${sub.id}.txt")
-            if (file.exists() && file.length() > 0) {
-              try {
-                val content = file.readText()
-                combinedRules.append(content).append("\n")
-              } catch (e: Exception) {
-                Log.e(TAG, "Failed reading cached filter ${sub.id}: ${e.message}")
-              }
+  private suspend fun loadPersistedRulesIntoBridgeAsync(): Int = withContext(Dispatchers.IO) {
+    mutex.withLock {
+      val dir = filterDir ?: return@withLock 0
+      val combinedRules = StringBuilder()
+      for (sub in _subscriptions.value) {
+        if (sub.enabled) {
+          val file = File(dir, "${sub.id}.txt")
+          if (file.exists() && file.length() > 0) {
+            try {
+              val content = file.readText()
+              combinedRules.append(content).append("\n")
+            } catch (e: Exception) {
+              Log.e(TAG, "Failed reading cached filter ${sub.id}: ${e.message}")
             }
           }
         }
-        if (combinedRules.isNotEmpty()) {
-          adblockBridge.compileRules(combinedRules.toString())
-        }
       }
+      if (combinedRules.isNotEmpty()) {
+        return@withLock adblockBridge.compileRules(combinedRules.toString())
+      }
+      return@withLock 0
+    }
+  }
+
+  private fun loadPersistedRulesIntoBridge() {
+    CoroutineScope(Dispatchers.IO).launch {
+      loadPersistedRulesIntoBridgeAsync()
     }
   }
 
@@ -222,7 +227,10 @@ class FilterManager(
           if (!res) successAll = false
         }
       }
-      loadPersistedRulesIntoBridge()
+      val compiledCount = loadPersistedRulesIntoBridgeAsync()
+      if (compiledCount <= 0) {
+        successAll = false
+      }
     } catch (e: Exception) {
       Log.e(TAG, "Error updating filter subscriptions: ${e.message}", e)
       successAll = false

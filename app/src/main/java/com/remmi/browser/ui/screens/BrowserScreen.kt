@@ -369,7 +369,6 @@ fun BrowserScreen(
     val currentProfile = activeTab.profile
     if (currentProfile == PrivacyProfile.SHIELD) {
       // Switching TO Ghost mode: Close session first to prevent clearnet leak
-      tabManager.updateTab(activeTab.id) { it.copy(profile = PrivacyProfile.GHOST) }
       scope.launch {
         isWaitingForTor = true
         privacyController.enterGhostMode(activeTab.id).onSuccess { port ->
@@ -396,7 +395,6 @@ fun BrowserScreen(
       // Switching BACK to Shield mode
       scope.launch {
         privacyController.enterShieldMode(activeTab.id)
-        tabManager.updateTab(activeTab.id) { it.copy(profile = PrivacyProfile.SHIELD) }
         withContext(Dispatchers.Main) {
           android.widget.Toast.makeText(
             context,
@@ -405,13 +403,6 @@ fun BrowserScreen(
           ).show()
         }
       }
-    }
-  }
-
-  // Ensure Tor bootstraps if active tab is in Ghost mode
-  LaunchedEffect(activeTab.profile) {
-    if (activeTab.profile == PrivacyProfile.GHOST && torState is TorManager.TorState.OFF) {
-      torManager.startTor()
     }
   }
 

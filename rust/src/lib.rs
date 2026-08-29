@@ -3,7 +3,7 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jint, jstring, JNI_TRUE, JNI_FALSE};
 use lazy_static::lazy_static;
-use adblock::engine::Engine;
+use adblock::Engine;
 use adblock::lists::{FilterSet, ParseOptions};
 use adblock::request::Request;
 
@@ -81,7 +81,7 @@ pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeMatches(
 
     if let Some(ref engine) = state.engine {
         if let Ok(req) = Request::new(&url_str, &source_str, &type_str) {
-            let blocker_result = engine.check(&req);
+            let blocker_result = engine.check_network_request(&req);
             if blocker_result.matched {
                 state.blocked_count += 1;
                 return JNI_TRUE;
@@ -114,7 +114,7 @@ pub extern "system" fn Java_com_remmi_adblock_AdblockBridge_nativeCompileRules(
     filter_set.add_filters(&lines, ParseOptions::default());
 
     if let Some(ref mut engine) = state.engine {
-        engine.use_filter_set(filter_set, true);
+        *engine = Engine::from_filter_set(filter_set, true);
     } else {
         state.engine = Some(Engine::from_filter_set(filter_set, true));
     }

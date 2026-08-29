@@ -88,7 +88,9 @@ class PrivacyNetworkController private constructor(private val context: Context)
     )
 
     geckoEngine.applyPrivacyProfile(PrivacyProfile.GHOST, socksPort, generation)
-    geckoEngine.setTabGhostMode(tabId, true)
+    
+    // Ensure all tabs reflect the global APP-WIDE Tor proxy routing
+    TabManager.getInstance().setAllTabsProfile(PrivacyProfile.GHOST)
 
     DebugLogManager.log("[ROUTE] ACTIVE profile=GHOST port=$socksPort exitIp=${torManager.currentCircuit.value?.verifiedExitIp ?: "Active"}")
     Result.success(socksPort)
@@ -97,29 +99,24 @@ class PrivacyNetworkController private constructor(private val context: Context)
   /**
    * Enters Shield Mode (Direct Clearnet with Fingerprinting Protection & Adblock):
    * 1. Closes existing Ghost session.
-   * 2. Clears SOCKS proxy from WebExtension & native Gecko engine ONLY IF no other ghost tabs exist.
-   * 3. Stops Tor if no other ghost tab is active.
+   * 2. Clears SOCKS proxy from WebExtension & native Gecko engine.
+   * 3. Stops Tor and updates all tabs to reflect the direct clearnet routing.
    */
   suspend fun enterShieldMode(tabId: String) = withContext(Dispatchers.IO) {
     Log.i(TAG, "Entering Shield Mode for tab $tabId (restoring direct clearnet)...")
 
     geckoEngine.closeSessionSafely(tabId)
-    geckoEngine.setTabGhostMode(tabId, false)
 
-    val anyOtherGhostTabs = TabManager.getInstance().tabs.value.any {
-      it.id != tabId && it.profile == PrivacyProfile.GHOST
-    }
+    val generation = CurrentTorRoute.clearRoute()
+    DebugLogManager.log("[ROUTE] REQUESTED profile=SHIELD tabId=$tabId generation=$generation")
+    torManager.stopTor()
+    NetworkHardening.applyShieldNetworkSettings(geckoEngine.runtime, generation)
+    geckoEngine.applyPrivacyProfile(PrivacyProfile.SHIELD, null, generation)
+    
+    // Ensure all tabs reflect the global APP-WIDE direct routing
+    TabManager.getInstance().setAllTabsProfile(PrivacyProfile.SHIELD)
 
-    if (!anyOtherGhostTabs) {
-      val generation = CurrentTorRoute.clearRoute()
-      DebugLogManager.log("[ROUTE] REQUESTED profile=SHIELD tabId=$tabId generation=$generation")
-      torManager.stopTor()
-      NetworkHardening.applyShieldNetworkSettings(geckoEngine.runtime, generation)
-      geckoEngine.applyPrivacyProfile(PrivacyProfile.SHIELD, null, generation)
-      DebugLogManager.log("[ROUTE] ACTIVE profile=SHIELD")
-    } else {
-      DebugLogManager.log("[ROUTE] Shield tab active but other Ghost tabs exist; maintaining Tor route invariant")
-    }
+    DebugLogManager.log("[ROUTE] ACTIVE profile=SHIELD")
   }
 
   /**

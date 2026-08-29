@@ -70,13 +70,23 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
       }
     }
     return try {
-      EventDispatcher.getInstance().dispatch("GeckoView:SetDefaultPrefs", bundle)
+      val eventName = if (branch == PREF_BRANCH_USER) "GeckoView:SetPrefs" else "GeckoView:SetDefaultPrefs"
+      val methodName = if (branch == PREF_BRANCH_USER) "setPrefs" else "setDefaultPrefs"
+      
+      EventDispatcher.getInstance().dispatch(eventName, bundle)
       if (runtime != null) {
         try {
-          val method = runtime.javaClass.getDeclaredMethod("setDefaultPrefs", GeckoBundle::class.java)
+          val method = runtime.javaClass.getDeclaredMethod(methodName, GeckoBundle::class.java)
           method.isAccessible = true
           method.invoke(runtime, bundle)
-        } catch (_: Throwable) {}
+        } catch (_: Throwable) {
+          // Fallback if methodName doesn't exist, try the other one just in case
+          try {
+            val fallback = runtime.javaClass.getDeclaredMethod("setDefaultPrefs", GeckoBundle::class.java)
+            fallback.isAccessible = true
+            fallback.invoke(runtime, bundle)
+          } catch (_: Throwable) {}
+        }
       }
       Log.i(TAG, "Successfully applied ${prefs.size} native Gecko preferences (branch=$branch)")
       true
@@ -88,13 +98,22 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
 
   private fun dispatchPrefBundle(name: String, value: Any, bundle: GeckoBundle, branch: Int): Boolean {
     return try {
-      EventDispatcher.getInstance().dispatch("GeckoView:SetDefaultPrefs", bundle)
+      val eventName = if (branch == PREF_BRANCH_USER) "GeckoView:SetPrefs" else "GeckoView:SetDefaultPrefs"
+      val methodName = if (branch == PREF_BRANCH_USER) "setPrefs" else "setDefaultPrefs"
+      
+      EventDispatcher.getInstance().dispatch(eventName, bundle)
       if (runtime != null) {
         try {
-          val method = runtime.javaClass.getDeclaredMethod("setDefaultPrefs", GeckoBundle::class.java)
+          val method = runtime.javaClass.getDeclaredMethod(methodName, GeckoBundle::class.java)
           method.isAccessible = true
           method.invoke(runtime, bundle)
-        } catch (_: Throwable) {}
+        } catch (_: Throwable) {
+          try {
+            val fallback = runtime.javaClass.getDeclaredMethod("setDefaultPrefs", GeckoBundle::class.java)
+            fallback.isAccessible = true
+            fallback.invoke(runtime, bundle)
+          } catch (_: Throwable) {}
+        }
       }
       Log.d(TAG, "Applied Gecko pref $name = $value (branch=$branch)")
       true

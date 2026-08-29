@@ -68,7 +68,7 @@ object NavigationSecurityAuthority {
       ""
     }
 
-    if (isPrivateOrLocalHost(host)) {
+    if (isPrivateOrLocalHost(host, isGhost)) {
       Log.w(TAG, "Navigation BLOCKED: Local/Private address target '$host'")
       return NavigationCheckResult(
         NavigationDecision.BLOCK,
@@ -85,6 +85,14 @@ object NavigationSecurityAuthority {
           reason = ".onion hidden services require an active and verified Tor (Ghost) tab session."
         )
       }
+    } else if (isGhost) {
+      if (!CurrentTorRoute.isReady) {
+        Log.w(TAG, "Navigation BLOCKED: Ghost mode requested but Tor is not active/verified (torReady=${CurrentTorRoute.isReady}).")
+        return NavigationCheckResult(
+          NavigationDecision.BLOCK,
+          reason = "Ghost navigation requires an active and verified Tor tab session."
+        )
+      }
     }
 
     // Sanitize and upgrade protocol if applicable
@@ -92,7 +100,7 @@ object NavigationSecurityAuthority {
     return NavigationCheckResult(NavigationDecision.ALLOW, sanitizedUrl = sanitized)
   }
 
-  fun isPrivateOrLocalHost(host: String): Boolean {
+  fun isPrivateOrLocalHost(host: String, isGhost: Boolean = false): Boolean {
     val clean = host.trim().lowercase().removePrefix("[").removeSuffix("]").trimEnd('.')
     if (clean.isEmpty()) return false
 
@@ -123,8 +131,8 @@ object NavigationSecurityAuthority {
       }
     } catch (_: Exception) {}
 
-    // Check hostname address resolution for DNS rebinding protection (unless .onion)
-    if (!clean.endsWith(".onion") && clean != "onion") {
+    // Check hostname address resolution for DNS rebinding protection (unless .onion or Ghost)
+    if (!isGhost && !clean.endsWith(".onion") && clean != "onion") {
       try {
         val addresses = InetAddress.getAllByName(clean)
         for (addr in addresses) {

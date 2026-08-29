@@ -358,6 +358,10 @@ class TabManager {
     updateTab(currentTab.id) { it.copy(profile = newProfile) }
   }
 
+  fun setAllTabsProfile(profile: PrivacyProfile) {
+    _tabs.value = _tabs.value.map { it.copy(profile = profile) }
+  }
+
   fun toggleReaderMode(tabId: String) {
     updateTab(tabId) { it.copy(isReaderMode = !it.isReaderMode) }
   }

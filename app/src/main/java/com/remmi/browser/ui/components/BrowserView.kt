@@ -198,14 +198,17 @@ fun BrowserView(
       try {
         val blockExtension = geckoEngine.blockExtension
         val htmlDeferred = CompletableDeferred<String>()
-        val originalCallback = blockExtension.onHtmlExtracted
-        blockExtension.onHtmlExtracted = { _, html ->
-          htmlDeferred.complete(html)
-        }
-        blockExtension.extractActiveTabHtml()
+        
+        blockExtension.extractTabHtml(
+          tabId = tab.id,
+          callback = { extractedUrl, html ->
+            if (extractedUrl == tab.url || html.isNotEmpty()) {
+              htmlDeferred.complete(html)
+            }
+          }
+        )
 
         val pageHtml = withTimeoutOrNull(2500L) { htmlDeferred.await() }
-        blockExtension.onHtmlExtracted = originalCallback
 
         val extracted = if (!pageHtml.isNullOrBlank()) {
           val domain = try {

@@ -81,6 +81,11 @@ class RemmiTorService : TorService() {
       stopForeground(STOP_FOREGROUND_REMOVE)
     } catch (_: Exception) {}
     isForegroundPromoted = false
+
+    // Invalidate route immediately on Tor termination (P0-5)
+    com.remmi.browser.security.CurrentTorRoute.clearRoute()
+    com.remmi.browser.security.TorManager.getInstance(applicationContext).handleUnexpectedTermination()
+
     super.onDestroy()
   }
 

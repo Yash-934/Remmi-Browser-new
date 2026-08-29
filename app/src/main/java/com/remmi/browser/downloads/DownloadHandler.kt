@@ -119,6 +119,20 @@ class DownloadHandler(private val context: Context) {
     isGhost: Boolean,
     webResponse: WebResponse?
   ) {
+    if (isGhost) {
+      if (!com.remmi.browser.security.CurrentTorRoute.isGhostActive || !com.remmi.browser.security.CurrentTorRoute.isVerified || com.remmi.browser.security.CurrentTorRoute.currentSocksPort == null) {
+        val errorNotif = NotificationCompat.Builder(context, CHANNEL_ID)
+          .setContentTitle("Download failed: Security Alert")
+          .setContentText("Ghost route unavailable or unverified. Download aborted to prevent leaks.")
+          .setSmallIcon(android.R.drawable.stat_sys_warning)
+          .setAutoCancel(true)
+          .build()
+        val notifManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notifManager.notify((downloadId % Int.MAX_VALUE).toInt(), errorNotif)
+        return
+      }
+    }
+
     val uriStr = Uri.parse(url)
     val fileName = sanitizeFileName(suggestedFilename ?: uriStr.lastPathSegment ?: "remmi_download")
     val mime = mimeType ?: guessMimeType(fileName)

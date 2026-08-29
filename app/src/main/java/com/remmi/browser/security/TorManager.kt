@@ -507,6 +507,15 @@ class TorManager(private val context: Context) {
     }
   }
 
+  fun handleUnexpectedTermination() {
+    DebugLogManager.log("TorManager: Unexpected Tor service termination detected. Enforcing fail-closed route invalidation.")
+    CoroutineScope(Dispatchers.Main).launch {
+      _bootstrapState.value = TorState.OFF
+      _currentCircuit.value = null
+      CurrentTorRoute.clearRoute()
+    }
+  }
+
   companion object {
     private const val TAG = "TorManager"
 

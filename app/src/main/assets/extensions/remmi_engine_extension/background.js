@@ -43,8 +43,22 @@ function connectNative() {
 
     port.onMessage.addListener((msg) => {
       if (!msg) return;
-      // WebExtension operates strictly for ad blocking and click transparency.
-      // Native Gecko layer handles all proxy and network hardening authoritatively.
+      if (msg.type === "EXTRACT_HTML") {
+        const requestId = msg.requestId;
+        browser.tabs.query({active: true}).then(tabs => {
+          if (tabs.length > 0) {
+            const activeTab = tabs[0];
+            browser.tabs.executeScript(activeTab.id, {
+              code: "document.documentElement.outerHTML;"
+            }).then((res) => {
+              const html = (res && res[0]) ? res[0] : "";
+              port.postMessage({ type: "EXTRACTED_HTML", html: html, url: activeTab.url, requestId: requestId });
+            }).catch(e => {
+              port.postMessage({ type: "EXTRACTED_HTML", html: "", url: "", requestId: requestId });
+            });
+          }
+        });
+      }
     });
 
     port.onDisconnect.addListener(() => {
@@ -61,6 +75,7 @@ connectNative();
 // 1. Content Script Message Listener: Forward CLICK_INSPECTED -> native port -> BlockExtension
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message) return;
+
   if (message.type === "CLICK_INSPECTED") {
     const payload = {
       type: "CLICK_INSPECTION_RESULT",
@@ -81,122 +96,25 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       pendingMessages.push(payload);
     }
   }
+
   if (sendResponse) sendResponse({ received: true });
   return true;
 });
 
-// Built-in ad, tracker, analytics, cryptominer, and telemetric patterns
-const blockPatterns = [
-  // Primary Analytics & Telemetry
-  /google-analytics\.com/i,
-  /googletagmanager\.com/i,
-  /analytics\.google\.com/i,
-  /segment\.io/i,
-  /segment\.com\/analytics/i,
-  /mixpanel\.com/i,
-  /amplitude\.com/i,
-  /clarity\.ms/i,
-  /hotjar\.com/i,
-  /mouseflow\.com/i,
-  /crazyegg\.com/i,
-  /mc\.yandex\.ru/i,
-  /statcounter\.com/i,
-  /newrelic\.com/i,
-  /optimizely\.com/i,
-  /chartbeat\.com/i,
-  /quantserve\.com/i,
-  /quantcount\.com/i,
-  /scorecardresearch\.com/i,
-
-  // Ad Networks, DSPs, SSPs & Exchanges
-  /doubleclick\.net/i,
-  /googlesyndication\.com/i,
-  /adservice\.google\./i,
-  /pagead2\.googlesyndication\.com/i,
-  /googleads\.g\.doubleclick\.net/i,
-  /securepubads\.g\.doubleclick\.net/i,
-  /adnxs\.com/i,
-  /adsrvr\.org/i,
-  /criteo\.com/i,
-  /criteo\.net/i,
-  /taboola\.com/i,
-  /outbrain\.com/i,
-  /moatads\.com/i,
-  /rubiconproject\.com/i,
-  /openx\.net/i,
-  /casalemedia\.com/i,
-  /pubmatic\.com/i,
-  /yieldmanager\.com/i,
-  /yieldmo\.com/i,
-  /indexww\.com/i,
-  /bidswitch\.net/i,
-  /revcontent\.com/i,
-  /mgid\.com/i,
-  /zergnet\.com/i,
-  /adroll\.com/i,
-  /smartadserver\.com/i,
-  /amazon-adsystem\.com/i,
-  /zedo\.com/i,
-  /advertising\.com/i,
-
-  // Invasive Popups, Interstitials & Redirect Ads
-  /popads\.net/i,
-  /popcash\.net/i,
-  /propellerads\.com/i,
-  /adsterra\.com/i,
-  /exoclick\.com/i,
-  /trafficjunky\.com/i,
-  /trafficfactory\.biz/i,
-  /juicyads\.com/i,
-  /clickadu\.com/i,
-  /hilltopads\.net/i,
-
-  // Mobile Attribution & Fingerprint Beacons
-  /appsflyer\.com/i,
-  /branch\.io/i,
-  /adjust\.com/i,
-  /kochava\.com/i,
-  /singular\.net/i,
-  /applovin\.com/i,
-  /unityads\.unity3d\.com/i,
-  /vungle\.com/i,
-  /ironsrc\.com/i,
-  /mintegral\.com/i,
-
-  // Social & Platform Tracking Beacons / Pixels
-  /facebook\.net\/tr/i,
-  /connect\.facebook\.net/i,
-  /ads-twitter\.com/i,
-  /analytics\.twitter\.com/i,
-  /static\.ads-twitter\.com/i,
-  /bat\.bing\.com/i,
-  /tr\.snapchat\.com/i,
-  /analytics\.tiktok\.com/i,
-  /pixel\.reddit\.com/i,
-  /licdn\.com\/insight/i,
-  /pinterest\.com\/ct\.html/i,
-
-  // Cryptominers & Coercive Scripts
-  /coinhive\.com/i,
-  /coin-hive\.com/i,
-  /cryptoloot\.pro/i,
-  /crypto-loot\.com/i,
-  /webminepool\.com/i,
-  /authedmine\.com/i,
-  /minr\.pw/i,
-
-  // Generic ad server path patterns
-  /\/(?:ad|ads|advert|banner|prebid|telemetry|trackers?|pixel)\.(?:js|gif|png|json)/i,
-  /\/(?:adserver|adsystem|pagead|beacon)\./i
-];
-
+// 2. Delegate all network requests to the Rust Native Engine (P0-7)
 browser.webRequest.onBeforeRequest.addListener(
-  function(details) {
+  async function(details) {
     const url = details.url;
     if (!url) return { cancel: false };
 
-    for (let i = 0; i < blockPatterns.length; i++) {
-      if (blockPatterns[i].test(url)) {
+    try {
+      const response = await browser.runtime.sendNativeMessage("remmi_engine_extension", {
+        type: "SHOULD_BLOCK",
+        url: url,
+        sourceUrl: details.originUrl || details.documentUrl || "",
+        resourceType: details.type || "other"
+      });
+      if (response && response.cancel === true) {
         if (port) {
           try {
             port.postMessage({
@@ -209,7 +127,10 @@ browser.webRequest.onBeforeRequest.addListener(
         }
         return { cancel: true };
       }
+    } catch (e) {
+      // Fallback if Native Messaging fails
     }
+    
     return { cancel: false };
   },
   { urls: ["<all_urls>"] },

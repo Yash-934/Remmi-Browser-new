@@ -1,6 +1,9 @@
 package com.remmi.adblock
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,6 +97,30 @@ class BlockExtension private constructor(private val adblockBridge: AdblockBridg
   fun setExtensionFailed(reason: String) {
     _extensionState.value = ExtensionState.FAILED
     log("[WEBEXT] Extension registration failed: $reason")
+  }
+
+  override fun onMessage(
+    nativeApp: String,
+    message: Any,
+    sender: WebExtension.MessageSender
+  ): org.mozilla.geckoview.GeckoResult<Any>? {
+    if (message is JSONObject) {
+      val type = message.optString("type")
+      if (type == "SHOULD_BLOCK") {
+        val url = message.optString("url")
+        val sourceUrl = message.optString("sourceUrl")
+        val resourceType = message.optString("resourceType")
+        
+        val result = org.mozilla.geckoview.GeckoResult<Any>()
+        CoroutineScope(Dispatchers.IO).launch {
+            val blocked = adblockBridge.shouldBlock(url, sourceUrl, resourceType)
+            val responseObj = JSONObject().apply { put("cancel", blocked) }
+            result.complete(responseObj)
+        }
+        return result
+      }
+    }
+    return null
   }
 
   override fun onConnect(port: WebExtension.Port) {
