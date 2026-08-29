@@ -599,6 +599,9 @@ abstract class RemmiDatabase : RoomDatabase() {
         if (instance != null && instance.isOpen) {
           return@synchronized instance
         }
+        try {
+          net.sqlcipher.database.SQLiteDatabase.loadLibs(context.applicationContext)
+        } catch (_: Throwable) {}
         val passphrase = getOrCreatePassphrase(context)
         val supportFactory = SupportFactory(passphrase, null, false)
         instance = Room.databaseBuilder(

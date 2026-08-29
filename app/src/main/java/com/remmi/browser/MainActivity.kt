@@ -74,9 +74,9 @@ class MainActivity : FragmentActivity() {
       else -> ScreenRoute.WELCOME
     }
 
-    // Initialize Gecko runtime asynchronously after immediate UI composition to avoid startup freeze
+    // Initialize Gecko runtime asynchronously in background without blocking Main looper
     if (!isPendingWipe) {
-      lifecycleScope.launch(Dispatchers.Main) {
+      lifecycleScope.launch(Dispatchers.IO) {
         try {
           com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
         } catch (e: Throwable) {

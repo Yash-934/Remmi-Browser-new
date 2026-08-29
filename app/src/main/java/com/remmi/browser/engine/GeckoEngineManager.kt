@@ -87,6 +87,7 @@ class GeckoEngineManager private constructor(private val context: Context) {
     check(isMain) { "Gecko operation $operation MUST be called on the Main thread! (Current: ${Thread.currentThread().name})" }
   }
 
+  @Synchronized
   fun initializeRuntime(): GeckoRuntime {
     if (runtime != null) return runtime!!
 
