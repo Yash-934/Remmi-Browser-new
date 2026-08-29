@@ -22,8 +22,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '9.3.1'
 
       - name: Decode Release Keystore
         env:
@@ -43,7 +41,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          gradle assembleRelease \
+          chmod +x ./gradlew
+          ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/release-keystore.jks \
             -Pandroid.injected.signing.store.password=$STORE_PASSWORD \
             -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
