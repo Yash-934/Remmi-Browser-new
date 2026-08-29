@@ -55,7 +55,7 @@ class RemmiApp : Application(), SingletonImageLoader.Factory {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
         Log.i("RemmiApp", "Background initialization started...")
         AdblockBridge.getInstance()
-        RemmiDatabase.getDatabase(this)
+        RemmiDatabase.bootstrap(this)
         SettingsRepository.getInstance(this)
         Log.i("RemmiApp", "Background initialization completed.")
       } catch (e: Throwable) {

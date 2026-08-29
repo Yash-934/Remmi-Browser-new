@@ -155,7 +155,6 @@ fun SettingsScreen(
   val filterManager = remember { FilterManager.getInstance(context, adblockBridge) }
   val subscriptions by filterManager.subscriptions.collectAsState()
 
-  val database = remember { RemmiDatabase.getDatabase(context) }
   val integrityReport = remember { TamperDetection.checkIntegrity(context) }
   val passwordRepo = remember { com.remmi.browser.security.PasswordManagerRepository.getInstance(context) }
   val vaultLockState by passwordRepo.lockState.collectAsState()

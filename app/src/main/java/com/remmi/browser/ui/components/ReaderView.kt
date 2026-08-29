@@ -112,7 +112,9 @@ import com.remmi.browser.reader.TtsPlayState
 import com.remmi.browser.storage.RemmiDatabase
 import com.remmi.browser.storage.ReadingListItem
 import com.remmi.browser.ui.theme.ThemeCyber
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class ReaderThemePreset(
   val displayName: String,
@@ -207,15 +209,17 @@ fun ReaderView(
 
   val displayArticle = if (isShowingOriginal) article else currentArticle
 
-  // Database and Saved State
-  val database = remember { RemmiDatabase.getDatabase(context) }
+  // Saved State
   var isArticleSaved by remember { mutableStateOf(false) }
 
   LaunchedEffect(displayArticle?.sourceUrl) {
     displayArticle?.sourceUrl?.let { url ->
       if (url.isNotBlank()) {
-        val existing = database.readingListDao().getReadingByUrl(url)
-        isArticleSaved = existing != null
+        withContext(Dispatchers.IO) {
+          val db = RemmiDatabase.getDatabaseAsync(context)
+          val existing = db.readingListDao().getReadingByUrl(url)
+          isArticleSaved = existing != null
+        }
       }
     }
   }
@@ -1516,7 +1520,11 @@ fun ReaderView(
 
   // 4. Save to Reading List Folder-wise Bottom Sheet
   if (showSaveSheet) {
-    val existingFolders by database.readingListDao().getAllFolders().collectAsState(initial = emptyList())
+    val dbState by RemmiDatabase.databaseState.collectAsState()
+    val db = (dbState as? RemmiDatabase.DatabaseState.Ready)?.database
+    val existingFolders by remember(db) {
+      db?.readingListDao()?.getAllFolders() ?: kotlinx.coroutines.flow.flowOf(emptyList<String>())
+    }.collectAsState(initial = emptyList<String>())
     val defaultFolders = listOf("General", "Technology", "Research", "News", "AI & Science", "Crypto & Privacy", "Read Later")
     val combinedFolders = remember(existingFolders) {
       (defaultFolders + existingFolders).distinct().filter { it.isNotBlank() }
@@ -1810,16 +1818,19 @@ fun ReaderView(
                 savedAt = System.currentTimeMillis()
               )
 
-              scope.launch {
-                database.readingListDao().insert(readingItem)
-                isArticleSaved = true
-                isSaving = false
-                showSaveSheet = false
-                Toast.makeText(
-                  context,
-                  "Article saved to '${targetFolder}' for offline reading!",
-                  Toast.LENGTH_SHORT
-                ).show()
+              scope.launch(Dispatchers.IO) {
+                val db = RemmiDatabase.getDatabaseAsync(context)
+                db.readingListDao().insert(readingItem)
+                withContext(Dispatchers.Main) {
+                  isArticleSaved = true
+                  isSaving = false
+                  showSaveSheet = false
+                  Toast.makeText(
+                    context,
+                    "Article saved to '${targetFolder}' for offline reading!",
+                    Toast.LENGTH_SHORT
+                  ).show()
+                }
               }
             }
           },

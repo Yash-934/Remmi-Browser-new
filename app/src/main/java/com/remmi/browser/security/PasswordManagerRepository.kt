@@ -51,8 +51,7 @@ class PasswordManagerRepository private constructor(
   private val context: Context,
   
 ) {
-  private val db: RemmiDatabase
-    get() = RemmiDatabase.getDatabase(context)
+  private suspend fun getDb(): RemmiDatabase = RemmiDatabase.getDatabaseAsync(context)
 
   private val scope = CoroutineScope(Dispatchers.IO + Job())
   private val prefs: SharedPreferences = context.getSharedPreferences("remmi_pm_secure_state", Context.MODE_PRIVATE)
@@ -77,7 +76,6 @@ class PasswordManagerRepository private constructor(
 
     fun getInstance(context: Context): PasswordManagerRepository {
       return INSTANCE ?: synchronized(this) {
-        val db = RemmiDatabase.getDatabase(context)
         INSTANCE ?: PasswordManagerRepository(context.applicationContext).also {
           INSTANCE = it
         }
@@ -103,7 +101,7 @@ class PasswordManagerRepository private constructor(
         return@launch
       }
 
-      val metadata = db.masterKeyMetadataDao().getMetadata()
+      val metadata = getDb().masterKeyMetadataDao().getMetadata()
       if (metadata == null) {
         _lockState.value = VaultLockState.Uninitialized
         return@launch
@@ -197,7 +195,7 @@ class PasswordManagerRepository private constructor(
         autoWipeEnabled = autoWipe,
       )
 
-      db.masterKeyMetadataDao().saveMetadata(metadata)
+      getDb().masterKeyMetadataDao().saveMetadata(metadata)
       resetFailedAttempts()
 
       _lockState.value = VaultLockState.Unlocked(dek.copyOf())
@@ -220,7 +218,7 @@ class PasswordManagerRepository private constructor(
       return@withContext Result.failure(IllegalArgumentException("Invalid PIN format."))
     }
 
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault uninitialized."))
 
     val pinKdfResult = PasswordCryptoEngine.deriveKeyEncryptionKey(pin)
@@ -238,7 +236,7 @@ class PasswordManagerRepository private constructor(
         pinVerifier = verifier,
         pinVerifierSalt = verifierSalt,
       )
-      db.masterKeyMetadataDao().saveMetadata(updated)
+      getDb().masterKeyMetadataDao().saveMetadata(updated)
       return@withContext Result.success(Unit)
     } catch (e: Exception) {
       return@withContext Result.failure(e)
@@ -248,7 +246,7 @@ class PasswordManagerRepository private constructor(
   }
 
   suspend fun removeMasterPin(): Boolean = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata() ?: return@withContext false
+    val metadata = getDb().masterKeyMetadataDao().getMetadata() ?: return@withContext false
     val updated = metadata.copy(
       pinEnabled = false,
       pinEncryptedDek = null,
@@ -259,7 +257,7 @@ class PasswordManagerRepository private constructor(
       pinVerifier = null,
       pinVerifierSalt = null,
     )
-    db.masterKeyMetadataDao().saveMetadata(updated)
+    getDb().masterKeyMetadataDao().saveMetadata(updated)
     return@withContext true
   }
 
@@ -273,7 +271,7 @@ class PasswordManagerRepository private constructor(
       return@withContext Result.failure(SecurityException("Device integrity compromised. Password vault blocked."))
     }
 
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault uninitialized."))
 
     val kdfResult = PasswordCryptoEngine.deriveKeyEncryptionKey(password, metadata.kdfSalt)
@@ -314,7 +312,7 @@ class PasswordManagerRepository private constructor(
       return@withContext Result.failure(SecurityException("Device integrity compromised. Password vault blocked."))
     }
 
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault uninitialized."))
 
     if (!metadata.pinEnabled || metadata.pinEncryptedDek == null || metadata.pinKdfSalt == null ||
@@ -359,7 +357,7 @@ class PasswordManagerRepository private constructor(
       return@withContext false
     }
 
-    val metadata = db.masterKeyMetadataDao().getMetadata() ?: return@withContext false
+    val metadata = getDb().masterKeyMetadataDao().getMetadata() ?: return@withContext false
 
     if (password != null && password.isNotEmpty()) {
       val kdfResult = PasswordCryptoEngine.deriveKeyEncryptionKey(password, metadata.kdfSalt)
@@ -395,7 +393,7 @@ class PasswordManagerRepository private constructor(
   }
 
   suspend fun getMasterKeyMetadata(): MasterKeyMetadataEntity? = withContext(Dispatchers.IO) {
-    db.masterKeyMetadataDao().getMetadata()
+    getDb().masterKeyMetadataDao().getMetadata()
   }
 
   fun isBiometricAvailable(): Boolean {
@@ -420,7 +418,7 @@ class PasswordManagerRepository private constructor(
   }
 
   suspend fun prepareBiometricDecryptCipher(): Result<Cipher> = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault uninitialized."))
 
     val iv = metadata.biometricIv
@@ -436,7 +434,7 @@ class PasswordManagerRepository private constructor(
       Log.w(TAG, "Biometric key invalidated by biometric enrollment change: ${e.message}")
       // Mark biometric as disabled so the user must use Master Password or PIN and re-enroll
       val updated = metadata.copy(biometricEnabled = false, biometricWrappedDek = null, biometricIv = null, biometricAuthTag = null)
-      db.masterKeyMetadataDao().saveMetadata(updated)
+      getDb().masterKeyMetadataDao().saveMetadata(updated)
       Result.failure(SecurityException("Biometrics changed. Please unlock with Master Password or PIN to re-enroll."))
     } catch (e: Exception) {
       Result.failure(e)
@@ -445,7 +443,7 @@ class PasswordManagerRepository private constructor(
 
   // --- Biometric Unlock ---
   suspend fun unlockWithBiometric(biometricCipher: Cipher): Result<Unit> = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault uninitialized."))
 
     val wrapped = metadata.biometricWrappedDek
@@ -467,7 +465,7 @@ class PasswordManagerRepository private constructor(
   suspend fun enableBiometricUnlock(biometricCipher: Cipher): Boolean = withContext(Dispatchers.IO) {
     val state = _lockState.value
     if (state !is VaultLockState.Unlocked) return@withContext false
-    val metadata = db.masterKeyMetadataDao().getMetadata() ?: return@withContext false
+    val metadata = getDb().masterKeyMetadataDao().getMetadata() ?: return@withContext false
 
     try {
       val wrapped = PasswordCryptoEngine.wrapDekWithBiometric(state.dek, biometricCipher)
@@ -477,7 +475,7 @@ class PasswordManagerRepository private constructor(
         biometricAuthTag = wrapped.authTag,
         biometricEnabled = true,
       )
-      db.masterKeyMetadataDao().saveMetadata(updated)
+      getDb().masterKeyMetadataDao().saveMetadata(updated)
       return@withContext true
     } catch (e: Exception) {
       Log.e(TAG, "Failed to enable biometric: ${e.message}")
@@ -486,14 +484,14 @@ class PasswordManagerRepository private constructor(
   }
 
   suspend fun disableBiometricUnlock(): Boolean = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata() ?: return@withContext false
+    val metadata = getDb().masterKeyMetadataDao().getMetadata() ?: return@withContext false
     val updated = metadata.copy(
       biometricEnabled = false,
       biometricWrappedDek = null,
       biometricIv = null,
       biometricAuthTag = null,
     )
-    db.masterKeyMetadataDao().saveMetadata(updated)
+    getDb().masterKeyMetadataDao().saveMetadata(updated)
     return@withContext true
   }
 
@@ -502,9 +500,9 @@ class PasswordManagerRepository private constructor(
   suspend fun disableBiometrics(): Boolean = disableBiometricUnlock()
 
   suspend fun setAutoWipe(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata() ?: return@withContext false
+    val metadata = getDb().masterKeyMetadataDao().getMetadata() ?: return@withContext false
     val updated = metadata.copy(autoWipeEnabled = enabled)
-    db.masterKeyMetadataDao().saveMetadata(updated)
+    getDb().masterKeyMetadataDao().saveMetadata(updated)
     return@withContext true
   }
 
@@ -571,7 +569,7 @@ class PasswordManagerRepository private constructor(
   suspend fun getDecryptedEntries(): List<DecryptedPasswordEntry> = withContext(Dispatchers.IO) {
     val state = _lockState.value
     if (state !is VaultLockState.Unlocked) return@withContext emptyList()
-    val entities = db.passwordEntryDao().getAllEntriesList()
+    val entities = getDb().passwordEntryDao().getAllEntriesList()
 
     val result = mutableListOf<DecryptedPasswordEntry>()
     for (entity in entities) {
@@ -632,15 +630,15 @@ class PasswordManagerRepository private constructor(
     )
 
     if (existingId > 0) {
-      db.passwordEntryDao().update(entity)
+      getDb().passwordEntryDao().update(entity)
       return@withContext existingId
     } else {
-      return@withContext db.passwordEntryDao().insert(entity)
+      return@withContext getDb().passwordEntryDao().insert(entity)
     }
   }
 
   suspend fun deleteEntry(id: Long) = withContext(Dispatchers.IO) {
-    db.passwordEntryDao().deleteById(id)
+    getDb().passwordEntryDao().deleteById(id)
   }
 
   // --- Autofill Match Lookup (HTTPS Only) ---
@@ -652,7 +650,7 @@ class PasswordManagerRepository private constructor(
     if (state !is VaultLockState.Unlocked) return@withContext emptyList()
 
     val siteHash = PasswordCryptoEngine.hashSiteUrl(url)
-    val candidates = db.passwordEntryDao().getEntriesByUrlHash(siteHash)
+    val candidates = getDb().passwordEntryDao().getEntriesByUrlHash(siteHash)
 
     val matches = mutableListOf<DecryptedPasswordEntry>()
     for (candidate in candidates) {
@@ -742,7 +740,7 @@ class PasswordManagerRepository private constructor(
       return@withContext Result.failure(IllegalArgumentException("New Master Password does not meet security requirements (min 12 chars)."))
     }
 
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault is uninitialized."))
 
     val newKdfResult = PasswordCryptoEngine.deriveKeyEncryptionKey(newPassword)
@@ -759,7 +757,7 @@ class PasswordManagerRepository private constructor(
         verifier = newVerifier,
         verifierSalt = newVerifierSalt,
       )
-      db.masterKeyMetadataDao().saveMetadata(updated)
+      getDb().masterKeyMetadataDao().saveMetadata(updated)
       return@withContext Result.success(Unit)
     } catch (e: Exception) {
       return@withContext Result.failure(e)
@@ -772,7 +770,7 @@ class PasswordManagerRepository private constructor(
     oldPassword: CharArray,
     newPassword: CharArray,
   ): Result<Unit> = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault is uninitialized."))
 
     if (!PasswordCryptoEngine.isPasswordValid(newPassword)) {
@@ -808,7 +806,7 @@ class PasswordManagerRepository private constructor(
           verifier = newVerifier,
           verifierSalt = newVerifierSalt,
         )
-        db.masterKeyMetadataDao().saveMetadata(updated)
+        getDb().masterKeyMetadataDao().saveMetadata(updated)
         resetFailedAttempts()
         _lockState.value = VaultLockState.Unlocked(dek)
         return@withContext Result.success(Unit)
@@ -826,7 +824,7 @@ class PasswordManagerRepository private constructor(
     oldPin: CharArray,
     newPin: CharArray,
   ): Result<Unit> = withContext(Dispatchers.IO) {
-    val metadata = db.masterKeyMetadataDao().getMetadata()
+    val metadata = getDb().masterKeyMetadataDao().getMetadata()
       ?: return@withContext Result.failure(IllegalStateException("Vault is uninitialized."))
 
     if (!metadata.pinEnabled || metadata.pinEncryptedDek == null || metadata.pinKdfSalt == null ||
@@ -869,7 +867,7 @@ class PasswordManagerRepository private constructor(
           pinVerifier = newVerifier,
           pinVerifierSalt = newVerifierSalt,
         )
-        db.masterKeyMetadataDao().saveMetadata(updated)
+        getDb().masterKeyMetadataDao().saveMetadata(updated)
         resetFailedAttempts()
         _lockState.value = VaultLockState.Unlocked(dek)
         return@withContext Result.success(Unit)
@@ -894,6 +892,7 @@ class PasswordManagerRepository private constructor(
 
     // 2. Clear Database records & metadata while database is still open
     val recordsCleared = try {
+      val db = getDb()
       db.passwordEntryDao().clearAll()
       db.masterKeyMetadataDao().clearMetadata()
       true

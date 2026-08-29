@@ -48,16 +48,6 @@ class MainActivity : FragmentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    
-    // Check and export any previous crash report to Downloads/Remmi Browser/
-    val pendingCrash = CrashHandlerHelper.checkAndExportPendingCrash(this)
-    if (pendingCrash != null) {
-      android.widget.Toast.makeText(
-        this,
-        "Crash log saved to Downloads/Remmi Browser/",
-        android.widget.Toast.LENGTH_LONG
-      ).show()
-    }
 
     enableEdgeToEdge()
 
@@ -87,7 +77,23 @@ class MainActivity : FragmentActivity() {
 
     setContent {
       val settings by settingsRepo.settings.collectAsState()
-      var crashResultToShow by remember { mutableStateOf(pendingCrash) }
+      var crashResultToShow by remember { mutableStateOf<CrashExportResult?>(null) }
+
+      androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+          val pendingCrash = CrashHandlerHelper.checkAndExportPendingCrash(this@MainActivity)
+          if (pendingCrash != null) {
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+              crashResultToShow = pendingCrash
+              android.widget.Toast.makeText(
+                this@MainActivity,
+                "Crash log saved to Downloads/Remmi Browser/",
+                android.widget.Toast.LENGTH_LONG
+              ).show()
+            }
+          }
+        }
+      }
 
       RemmiTheme(
         cyberTheme = settings.cyberTheme,

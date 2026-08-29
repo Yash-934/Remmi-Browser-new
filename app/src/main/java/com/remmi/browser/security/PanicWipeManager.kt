@@ -84,7 +84,7 @@ object PanicWipeManager {
    * Checks if an emergency panic wipe was interrupted by app termination or process death.
    * If detected on app launch, immediately executes and completes the remaining sanitization.
    */
-  suspend fun checkAndResumePendingWipe(context: Context, database: RemmiDatabase): Boolean = withContext(Dispatchers.IO) {
+  suspend fun checkAndResumePendingWipe(context: Context, database: RemmiDatabase? = null): Boolean = withContext(Dispatchers.IO) {
     val prefs = context.getSharedPreferences(PREFS_RECOVERY, Context.MODE_PRIVATE)
     if (!prefs.getBoolean(KEY_PENDING_WIPE, false)) {
       return@withContext false
@@ -119,7 +119,7 @@ object PanicWipeManager {
 
   suspend fun executeWipe(
     context: Context,
-    database: RemmiDatabase,
+    database: RemmiDatabase? = null,
     wipeVault: Boolean = false,
     onTabsClosed: () -> Unit = {}
   ): Boolean = withContext(Dispatchers.IO) {

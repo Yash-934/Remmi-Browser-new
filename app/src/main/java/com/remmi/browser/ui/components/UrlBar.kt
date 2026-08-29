@@ -106,7 +106,6 @@ fun TerminalUrlBar(
 ) {
   val context = LocalContext.current
   val clipboard = remember { ClipboardManager(context) }
-  val database = remember { RemmiDatabase.getDatabase(context) }
   val settingsRepo = remember { SettingsRepository.getInstance(context) }
   val settings by settingsRepo.settings.collectAsState()
   val searchEngine = remember(settings.searchEngineName) { SearchEngine.fromId(settings.searchEngineName) }
@@ -170,13 +169,14 @@ LaunchedEffect(url, showQuickActions) {
     if (isEditing) {
       val query = editText.trim()
       withContext(Dispatchers.IO) {
+        val db = RemmiDatabase.getDatabaseAsync(context)
         if (query.isNotEmpty()) {
-          val hist = database.historyDao().searchHistory(query)
-          val bkmk = database.bookmarkDao().searchBookmarks(query)
+          val hist = db.historyDao().searchHistory(query)
+          val bkmk = db.bookmarkDao().searchBookmarks(query)
           historySuggestions = hist
           bookmarkSuggestions = bkmk
         } else {
-          val recent = database.historyDao().getRecentHistory()
+          val recent = db.historyDao().getRecentHistory()
           historySuggestions = recent.take(6)
           bookmarkSuggestions = emptyList()
         }

@@ -165,7 +165,8 @@ fun BrowserScreen(
   
   val torManager = remember { TorManager.getInstance(context) }
   val geckoEngine = remember { com.remmi.browser.engine.GeckoEngineManager.getInstance(context) }
-  val database = remember { RemmiDatabase.getDatabase(context) }
+  val dbState by RemmiDatabase.databaseState.collectAsState()
+  val database = (dbState as? RemmiDatabase.DatabaseState.Ready)?.database
   val clipboardMgr = remember { ClipboardManager(context) }
   val settingsRepo = remember { SettingsRepository.getInstance(context) }
   val passwordRepo = remember { com.remmi.browser.security.PasswordManagerRepository.getInstance(context) }
@@ -184,18 +185,21 @@ fun BrowserScreen(
   LaunchedEffect(Unit) {
     tabManager.checkAndMarkInactiveTabs(thresholdHours = 24)
   }
-  val historyList by database.historyDao().getAllHistory().collectAsState(initial = emptyList())
-  val bookmarksList by database.bookmarkDao().getAllBookmarks().collectAsState(initial = emptyList())
-  val downloadsList by database.downloadDao().getAllDownloads().collectAsState(initial = emptyList())
+  val historyList by remember(database) {
+    database?.historyDao()?.getAllHistory() ?: kotlinx.coroutines.flow.flowOf(emptyList<com.remmi.browser.storage.HistoryItem>())
+  }.collectAsState(initial = emptyList<com.remmi.browser.storage.HistoryItem>())
+  val bookmarksList by remember(database) {
+    database?.bookmarkDao()?.getAllBookmarks() ?: kotlinx.coroutines.flow.flowOf(emptyList<com.remmi.browser.storage.BookmarkItem>())
+  }.collectAsState(initial = emptyList<com.remmi.browser.storage.BookmarkItem>())
+  val downloadsList by remember(database) {
+    database?.downloadDao()?.getAllDownloads() ?: kotlinx.coroutines.flow.flowOf(emptyList<com.remmi.browser.storage.DownloadItem>())
+  }.collectAsState(initial = emptyList<com.remmi.browser.storage.DownloadItem>())
 
   val speedDials by settingsRepo.speedDials.collectAsState()
   val savePrompt by autofillHelper.savePrompt.collectAsState()
   val fillPrompt by autofillHelper.fillPrompt.collectAsState()
 
   val activeTab = tabs.getOrNull(activeTabIndex) ?: tabs.firstOrNull() ?: BrowserTab()
-  val activityViewModel: ActivityViewModel = viewModel(
-    factory = ActivityViewModelFactory(database.historyDao(), database.bookmarkDao())
-  )
 
   LaunchedEffect(
     settings.dnsProvider,
@@ -271,44 +275,45 @@ fun BrowserScreen(
   // Restore previous session tabs on startup if enabled (Always erase Incognito / Ghost tabs on launch)
   LaunchedEffect(Unit) {
     withContext(Dispatchers.IO) {
-      database.sessionTabDao().clearPrivateTabs()
-    }
-    tabManager.purgePrivateTabs()
+      val db = RemmiDatabase.getDatabaseAsync(context)
+      db.sessionTabDao().clearPrivateTabs()
+      tabManager.purgePrivateTabs()
 
-    if (tabManager.tabs.value.isNotEmpty() && (tabManager.tabs.value.size > 1 || tabManager.tabs.value[0].url != "about:blank")) {
-      // Memory state already contains active tabs (e.g. returning from Settings or other screens)
-      isSessionRestored = true
-    } else if (settings.clearDataOnExit) {
-      withContext(Dispatchers.IO) {
-        database.sessionTabDao().clearAllTabs()
-        database.historyDao().clearHistory()
+      if (tabManager.tabs.value.isNotEmpty() && (tabManager.tabs.value.size > 1 || tabManager.tabs.value[0].url != "about:blank")) {
+        // Memory state already contains active tabs (e.g. returning from Settings or other screens)
+        isSessionRestored = true
+      } else if (settings.clearDataOnExit) {
+        db.sessionTabDao().clearAllTabs()
+        db.historyDao().clearHistory()
         com.remmi.browser.engine.GeckoEngineManager.getInstance(context).clearCookiesAndCacheSafely()
-      }
-      isSessionRestored = true
-    } else if (settings.restoreLastSession) {
-      var savedTabs = withContext(Dispatchers.IO) { database.sessionTabDao().getAllTabsList() }
-      val nonPrivateSavedTabs = savedTabs.filter { it.profile != PrivacyProfile.GHOST.name && it.profile != PrivacyProfile.INCOGNITO.name }
-      if (nonPrivateSavedTabs.isNotEmpty()) {
-        withContext(Dispatchers.Main) {
-          tabManager.restoreSavedTabs(nonPrivateSavedTabs)
+        isSessionRestored = true
+      } else if (settings.restoreLastSession) {
+        val savedTabs = db.sessionTabDao().getAllTabsList()
+        val nonPrivateSavedTabs = savedTabs.filter { it.profile != PrivacyProfile.GHOST.name && it.profile != PrivacyProfile.INCOGNITO.name }
+        if (nonPrivateSavedTabs.isNotEmpty()) {
+          withContext(Dispatchers.Main) {
+            tabManager.restoreSavedTabs(nonPrivateSavedTabs)
+            isSessionRestored = true
+          }
+        } else {
           isSessionRestored = true
         }
       } else {
         isSessionRestored = true
       }
-    } else {
-      isSessionRestored = true
     }
   }
 
-  // Auto-save tabs to encrypted database whenever tab list changes (strictly exclude Incognito / Ghost tabs)
+  // Auto-save tabs to encrypted database whenever tab list changes (strictly exclude Incognito / Ghost tabs, debounced)
   val persistKey = remember(tabs) {
     tabs.filter { it.profile != PrivacyProfile.GHOST && it.profile != PrivacyProfile.INCOGNITO }
       .joinToString("|") { "${it.id}:${it.url}:${it.title}" }
   }
   LaunchedEffect(persistKey, isSessionRestored) {
     if (isSessionRestored && !settings.clearDataOnExit) {
+      kotlinx.coroutines.delay(800) // Debounce tab persistence write storm
       withContext(Dispatchers.IO) {
+        val db = RemmiDatabase.getDatabaseAsync(context)
         val nonPrivateTabs = tabs.filter { it.profile != PrivacyProfile.GHOST && it.profile != PrivacyProfile.INCOGNITO }
         val entities = nonPrivateTabs.mapIndexed { index, tab ->
           SessionTabEntity(
@@ -322,9 +327,9 @@ fun BrowserScreen(
             isReaderMode = tab.isReaderMode,
           )
         }
-        database.sessionTabDao().clearAllTabs()
+        db.sessionTabDao().clearAllTabs()
         if (entities.isNotEmpty()) {
-          database.sessionTabDao().insertAll(entities)
+          db.sessionTabDao().insertAll(entities)
         }
       }
     }
@@ -335,7 +340,8 @@ fun BrowserScreen(
     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
       if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
         scope.launch(Dispatchers.IO) {
-          database.sessionTabDao().clearPrivateTabs()
+          val db = RemmiDatabase.getDatabaseAsync(context)
+          db.sessionTabDao().clearPrivateTabs()
         }
         tabManager.purgePrivateTabs()
       }
@@ -353,8 +359,9 @@ fun BrowserScreen(
         val activity = context as? android.app.Activity
         if (activity?.isFinishing == true && settings.clearDataOnExit) {
           scope.launch(Dispatchers.IO) {
-            database.sessionTabDao().clearAllTabs()
-            database.historyDao().clearHistory()
+            val db = RemmiDatabase.getDatabaseAsync(context)
+            db.sessionTabDao().clearAllTabs()
+            db.historyDao().clearHistory()
             com.remmi.browser.engine.GeckoEngineManager.getInstance(context).clearCookiesAndCacheSafely()
           }
         }
@@ -538,7 +545,8 @@ fun BrowserScreen(
             tabManager.updateTab(activeTab.id) { it.copy(url = sanitized, isReaderMode = false, readerArticle = null) }
             if (activeTab.profile != PrivacyProfile.GHOST && activeTab.profile != PrivacyProfile.INCOGNITO) {
               scope.launch(Dispatchers.IO) {
-                database.historyDao().insert(
+                val db = RemmiDatabase.getDatabaseAsync(context)
+                db.historyDao().insert(
                   HistoryItem(
                     url = sanitized,
                     title = sanitized,
@@ -551,10 +559,11 @@ fun BrowserScreen(
           onReload = { geckoEngine.reload(activeTab.id) },
           onToggleBookmark = {
             scope.launch(Dispatchers.IO) {
+              val db = RemmiDatabase.getDatabaseAsync(context)
               if (isBookmarked) {
-                database.bookmarkDao().deleteByUrl(activeTab.url)
+                db.bookmarkDao().deleteByUrl(activeTab.url)
               } else {
-                database.bookmarkDao().insert(
+                db.bookmarkDao().insert(
                   BookmarkItem(
                     url = activeTab.url,
                     title = activeTab.title.ifEmpty { activeTab.url }
@@ -730,7 +739,8 @@ fun BrowserScreen(
               tabManager.updateTab(activeTab.id) { it.copy(url = targetUrl, isReaderMode = false, readerArticle = null) }
               if (activeTab.profile != PrivacyProfile.GHOST && activeTab.profile != PrivacyProfile.INCOGNITO) {
                 scope.launch(Dispatchers.IO) {
-                  database.historyDao().insert(
+                  val db = RemmiDatabase.getDatabaseAsync(context)
+                  db.historyDao().insert(
                     HistoryItem(
                       url = targetUrl,
                       title = "$query - ${engine.displayName}",
@@ -745,7 +755,8 @@ fun BrowserScreen(
               tabManager.updateTab(activeTab.id) { it.copy(url = sanitized, isReaderMode = false, readerArticle = null) }
               if (activeTab.profile != PrivacyProfile.GHOST && activeTab.profile != PrivacyProfile.INCOGNITO) {
                 scope.launch(Dispatchers.IO) {
-                  database.historyDao().insert(
+                  val db = RemmiDatabase.getDatabaseAsync(context)
+                  db.historyDao().insert(
                     HistoryItem(
                       url = sanitized,
                       title = sanitized,
@@ -807,7 +818,8 @@ fun BrowserScreen(
               }
               if (activeTab.profile != PrivacyProfile.GHOST && activeTab.profile != PrivacyProfile.INCOGNITO) {
                 scope.launch(Dispatchers.IO) {
-                  database.historyDao().insert(
+                  val db = RemmiDatabase.getDatabaseAsync(context)
+                  db.historyDao().insert(
                     HistoryItem(
                       url = newUrl,
                       title = activeTab.title,
@@ -1873,19 +1885,26 @@ fun BrowserScreen(
 
   // 4. History & Bookmarks Sheet
   if (showHistoryBookmarksSheet) {
-    ModalBottomSheet(
-      onDismissRequest = { showHistoryBookmarksSheet = false },
-      containerColor = ThemeCyber.colors.background,
-      dragHandle = null,
-    ) {
-      ActivityScreen(
-        viewModel = activityViewModel,
-        initialTab = historyBookmarksInitialTab,
-        onSelectUrl = { url ->
-          tabManager.updateTab(activeTab.id) { it.copy(url = url, isReaderMode = false, readerArticle = null) }
-        },
-        onDismiss = { showHistoryBookmarksSheet = false }
+    val db = database
+    if (db != null) {
+      val activityViewModel: ActivityViewModel = viewModel(
+        key = "activity_vm_${db.hashCode()}",
+        factory = ActivityViewModelFactory(db.historyDao(), db.bookmarkDao())
       )
+      ModalBottomSheet(
+        onDismissRequest = { showHistoryBookmarksSheet = false },
+        containerColor = ThemeCyber.colors.background,
+        dragHandle = null,
+      ) {
+        ActivityScreen(
+          viewModel = activityViewModel,
+          initialTab = historyBookmarksInitialTab,
+          onSelectUrl = { url ->
+            tabManager.updateTab(activeTab.id) { it.copy(url = url, isReaderMode = false, readerArticle = null) }
+          },
+          onDismiss = { showHistoryBookmarksSheet = false }
+        )
+      }
     }
   }
 
@@ -1900,12 +1919,14 @@ fun BrowserScreen(
         downloadsList = downloadsList,
         onDeleteDownload = { item ->
           scope.launch(Dispatchers.IO) {
-            database.downloadDao().delete(item)
+            val db = RemmiDatabase.getDatabaseAsync(context)
+            db.downloadDao().delete(item)
           }
         },
         onClearAll = {
           scope.launch(Dispatchers.IO) {
-            database.downloadDao().clearAll()
+            val db = RemmiDatabase.getDatabaseAsync(context)
+            db.downloadDao().clearAll()
           }
         },
         onDismiss = { showDownloadsSheet = false },

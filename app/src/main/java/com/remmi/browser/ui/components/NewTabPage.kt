@@ -136,7 +136,6 @@ fun NewTabPage(
   val context = LocalContext.current
   val focusManager = LocalFocusManager.current
   val clipboard = remember { ClipboardManager(context) }
-  val database = remember { RemmiDatabase.getDatabase(context) }
   val scrollState = rememberScrollState()
 
   var searchQuery by remember { mutableStateOf("") }
@@ -168,8 +167,9 @@ fun NewTabPage(
     val query = searchQuery.trim()
     if (query.isNotEmpty()) {
       withContext(Dispatchers.IO) {
-        val hist = database.historyDao().searchHistory(query)
-        val bkmk = database.bookmarkDao().searchBookmarks(query)
+        val db = RemmiDatabase.getDatabaseAsync(context)
+        val hist = db.historyDao().searchHistory(query)
+        val bkmk = db.bookmarkDao().searchBookmarks(query)
         historySuggestions = hist.take(4)
         bookmarkSuggestions = bkmk.take(4)
       }

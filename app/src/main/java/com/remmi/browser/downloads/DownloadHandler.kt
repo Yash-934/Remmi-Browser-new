@@ -54,7 +54,6 @@ class DownloadHandler(private val context: Context) {
 
   private val downloadManager =
     context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-  private val database get() = RemmiDatabase.getDatabase(context)
   private val scope = CoroutineScope(Dispatchers.IO)
 
   private val _activeDownloads = MutableStateFlow<Map<Long, DownloadProgressInfo>>(emptyMap())
@@ -105,7 +104,8 @@ class DownloadHandler(private val context: Context) {
     notificationManager?.cancel(downloadId.toInt())
 
     scope.launch {
-      database.downloadDao().updateStatus(downloadId, "CANCELLED")
+      val db = RemmiDatabase.getDatabaseAsync(context)
+      db.downloadDao().updateStatus(downloadId, "CANCELLED")
     }
     Toast.makeText(context, "Download cancelled", Toast.LENGTH_SHORT).show()
   }
@@ -161,8 +161,10 @@ class DownloadHandler(private val context: Context) {
 
     notificationManager.notify(notifId, notifBuilder.build())
 
+    val db = RemmiDatabase.getDatabaseAsync(context)
+
     try {
-      database.downloadDao().insert(
+      db.downloadDao().insert(
         DownloadItem(
           downloadId = downloadId,
           fileName = fileName,
@@ -316,7 +318,7 @@ class DownloadHandler(private val context: Context) {
       _activeDownloads.value = _activeDownloads.value + (downloadId to finalInfo)
       activeJobs.remove(downloadId)
 
-      database.downloadDao().insert(
+      db.downloadDao().insert(
         DownloadItem(
           downloadId = downloadId,
           fileName = fileName,
@@ -359,7 +361,7 @@ class DownloadHandler(private val context: Context) {
       )
       _activeDownloads.value = _activeDownloads.value + (downloadId to failedInfo)
 
-      database.downloadDao().insert(
+      db.downloadDao().insert(
         DownloadItem(
           downloadId = downloadId,
           fileName = fileName,

@@ -87,7 +87,7 @@ object WipeVerifier {
            details.add("Database Record Audit FAILED: Database file still exists after full wipe.")
         } else {
            // read row counts
-           val db = RemmiDatabase.getDatabase(context)
+           val db = RemmiDatabase.getDatabaseAsync(context)
            val historyCount = db.historyDao().getCount()
            val tabCount = db.sessionTabDao().getCount()
            val downloadCount = db.downloadDao().getCount()

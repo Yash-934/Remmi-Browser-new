@@ -23,6 +23,7 @@ import com.remmi.browser.storage.SettingsRepository
 import com.remmi.browser.ui.theme.CyberMonoFamily
 import com.remmi.browser.ui.theme.ThemeCyber
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlin.random.Random
 
 @Composable
@@ -46,12 +47,14 @@ fun GlitchText(
 
   LaunchedEffect(isGlitchActive) {
     if (!isGlitchActive) return@LaunchedEffect
-    while (true) {
-      delay(Random.nextLong(2500, 5000))
+    while (isActive) {
+      delay(Random.nextLong(3000, 6000))
+      if (!isActive) break
       // Sudden jitter glitch
       offsetX = (Random.nextFloat() - 0.5f) * 6f
       isGlitching = true
       delay(60)
+      if (!isActive) break
       offsetX = -offsetX * 0.7f
       delay(50)
       offsetX = 0f

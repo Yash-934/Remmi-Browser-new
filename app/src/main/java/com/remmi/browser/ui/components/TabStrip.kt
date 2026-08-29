@@ -252,7 +252,6 @@ fun TabGridSheet(
   val isLight = cyberColors.isLight
   val isDark = !isLight
   val scope = rememberCoroutineScope()
-  val database = remember { RemmiDatabase.getDatabase(context) }
   val thumbnailManager = remember { TabThumbnailManager.getInstance(context) }
   val thumbnailVersions by thumbnailManager.thumbnailVersions.collectAsState()
 
@@ -1205,7 +1204,8 @@ fun TabGridSheet(
       },
       onAddToBookmarks = {
         scope.launch(Dispatchers.IO) {
-          database.bookmarkDao().insert(
+          val db = RemmiDatabase.getDatabaseAsync(context)
+          db.bookmarkDao().insert(
             BookmarkItem(
               title = tab.title.ifBlank { tab.url },
               url = tab.url,

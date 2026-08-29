@@ -48,7 +48,6 @@ fun PanicWipeDialog(
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
-  val database = remember { RemmiDatabase.getDatabase(context) }
   val vaultRepo = remember { PasswordManagerRepository.getInstance(context) }
   val wipeState by PanicWipeManager.state.collectAsState()
 
@@ -74,7 +73,6 @@ fun PanicWipeDialog(
     scope.launch {
       val success = PanicWipeManager.executeWipe(
         context = context,
-        database = database,
         wipeVault = wipeVault,
         onTabsClosed = {
           onWipeExecuted()

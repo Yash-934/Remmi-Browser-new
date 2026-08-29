@@ -67,7 +67,8 @@ fun ReadingListScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val focusManager = LocalFocusManager.current
-  val database = remember { RemmiDatabase.getDatabase(context) }
+  val dbState by RemmiDatabase.databaseState.collectAsState()
+  val database = (dbState as? RemmiDatabase.DatabaseState.Ready)?.database
   val isLight = ThemeCyber.colors.isLight
 
   // Theme Colors
@@ -80,8 +81,12 @@ fun ReadingListScreen(
   val primaryCyan = ThemeCyber.colors.primary
 
   // Live Database Queries
-  val allReadings by database.readingListDao().getAllReadings().collectAsState(initial = emptyList())
-  val distinctFoldersFromDb by database.readingListDao().getAllFolders().collectAsState(initial = emptyList())
+  val allReadings by remember(database) {
+    database?.readingListDao()?.getAllReadings() ?: kotlinx.coroutines.flow.flowOf(emptyList<com.remmi.browser.storage.ReadingListItem>())
+  }.collectAsState(initial = emptyList<com.remmi.browser.storage.ReadingListItem>())
+  val distinctFoldersFromDb by remember(database) {
+    database?.readingListDao()?.getAllFolders() ?: kotlinx.coroutines.flow.flowOf(emptyList<String>())
+  }.collectAsState(initial = emptyList<String>())
 
   // States
   var searchQuery by remember { mutableStateOf("") }
@@ -638,8 +643,9 @@ fun ReadingListScreen(
                 offlineReadingItemId = reading.id
 
                 // Mark as read
-                scope.launch {
-                  database.readingListDao().updateReadStatus(reading.id, true)
+                scope.launch(Dispatchers.IO) {
+                  val db = RemmiDatabase.getDatabaseAsync(context)
+                  db.readingListDao().updateReadStatus(reading.id, true)
                 }
               },
               onOpenInBrowser = {
@@ -647,13 +653,15 @@ fun ReadingListScreen(
                 onDismiss()
               },
               onToggleFavorite = {
-                scope.launch {
-                  database.readingListDao().toggleFavorite(reading.id, !reading.isFavorite)
+                scope.launch(Dispatchers.IO) {
+                  val db = RemmiDatabase.getDatabaseAsync(context)
+                  db.readingListDao().toggleFavorite(reading.id, !reading.isFavorite)
                 }
               },
               onToggleRead = {
-                scope.launch {
-                  database.readingListDao().updateReadStatus(reading.id, !reading.isRead)
+                scope.launch(Dispatchers.IO) {
+                  val db = RemmiDatabase.getDatabaseAsync(context)
+                  db.readingListDao().updateReadStatus(reading.id, !reading.isRead)
                 }
               },
               onChangeFolder = {
@@ -854,10 +862,13 @@ fun ReadingListScreen(
       confirmButton = {
         Button(
           onClick = {
-            scope.launch {
-              database.readingListDao().updateFolder(currentItem.id, selectedTargetFolder)
-              Toast.makeText(context, "Moved to '$selectedTargetFolder'", Toast.LENGTH_SHORT).show()
-              itemToChangeFolder = null
+            scope.launch(Dispatchers.IO) {
+              val db = RemmiDatabase.getDatabaseAsync(context)
+              db.readingListDao().updateFolder(currentItem.id, selectedTargetFolder)
+              withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Moved to '$selectedTargetFolder'", Toast.LENGTH_SHORT).show()
+                itemToChangeFolder = null
+              }
             }
           },
           colors = ButtonDefaults.buttonColors(containerColor = accentColor),
@@ -901,10 +912,13 @@ fun ReadingListScreen(
       confirmButton = {
         Button(
           onClick = {
-            scope.launch {
-              database.readingListDao().delete(item)
-              Toast.makeText(context, "Removed from Reading List", Toast.LENGTH_SHORT).show()
-              itemToDelete = null
+            scope.launch(Dispatchers.IO) {
+              val db = RemmiDatabase.getDatabaseAsync(context)
+              db.readingListDao().delete(item)
+              withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Removed from Reading List", Toast.LENGTH_SHORT).show()
+                itemToDelete = null
+              }
             }
           },
           colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.dangerRed),
@@ -947,10 +961,13 @@ fun ReadingListScreen(
       confirmButton = {
         Button(
           onClick = {
-            scope.launch {
-              database.readingListDao().clearAll()
-              Toast.makeText(context, "All saved readings cleared", Toast.LENGTH_SHORT).show()
-              showClearAllDialog = false
+            scope.launch(Dispatchers.IO) {
+              val db = RemmiDatabase.getDatabaseAsync(context)
+              db.readingListDao().clearAll()
+              withContext(Dispatchers.Main) {
+                Toast.makeText(context, "All saved readings cleared", Toast.LENGTH_SHORT).show()
+                showClearAllDialog = false
+              }
             }
           },
           colors = ButtonDefaults.buttonColors(containerColor = ThemeCyber.colors.dangerRed),

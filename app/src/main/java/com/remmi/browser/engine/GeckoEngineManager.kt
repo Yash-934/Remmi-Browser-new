@@ -15,7 +15,11 @@ import com.remmi.browser.security.NetworkHardening
 import com.remmi.browser.security.PrivacyProfile
 import com.remmi.browser.security.SecurityLevel
 import com.remmi.browser.util.PdfPrintHelper
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.mozilla.geckoview.GeckoRuntime
@@ -75,6 +79,19 @@ class GeckoEngineManager private constructor(private val context: Context) {
       policy.cookiePolicy == "ALLOW"
     }
   }
+  enum class GeckoInitState {
+    NOT_STARTED,
+    INITIALIZING,
+    READY,
+    FAILED
+  }
+
+  private val _initState = MutableStateFlow(GeckoInitState.NOT_STARTED)
+  val initState: StateFlow<GeckoInitState> = _initState.asStateFlow()
+
+  @Volatile
+  private var initDeferred: CompletableDeferred<GeckoRuntime>? = null
+
   private var currentProfile: PrivacyProfile = PrivacyProfile.SHIELD
   private val activeSessions = mutableMapOf<String, GeckoSession>()
   private val sessionCallbacks = mutableMapOf<String, GeckoTabCallbacks>()
@@ -87,10 +104,70 @@ class GeckoEngineManager private constructor(private val context: Context) {
     check(isMain) { "Gecko operation $operation MUST be called on the Main thread! (Current: ${Thread.currentThread().name})" }
   }
 
+  suspend fun ensureRuntimeInitialized(): GeckoRuntime = withContext(Dispatchers.Main) {
+    assertMainThread("ENSURE_RUNTIME_INITIALIZED")
+    val currentRt = runtime
+    if (currentRt != null && _initState.value == GeckoInitState.READY) {
+      return@withContext currentRt
+    }
+    val deferredToAwait: CompletableDeferred<GeckoRuntime>
+    synchronized(this@GeckoEngineManager) {
+      val existingRt = runtime
+      if (existingRt != null && _initState.value == GeckoInitState.READY) {
+        return@withContext existingRt
+      }
+      val existingDef = initDeferred
+      if (existingDef != null) {
+        deferredToAwait = existingDef
+      } else {
+        val def = CompletableDeferred<GeckoRuntime>()
+        initDeferred = def
+        _initState.value = GeckoInitState.INITIALIZING
+        deferredToAwait = def
+        try {
+          val rt = initializeRuntimeInternal()
+          def.complete(rt)
+        } catch (t: Throwable) {
+          _initState.value = GeckoInitState.FAILED
+          def.completeExceptionally(t)
+        }
+      }
+    }
+    deferredToAwait.await()
+  }
+
   @Synchronized
   fun initializeRuntime(): GeckoRuntime {
-    if (runtime != null) return runtime!!
+    assertMainThread("INITIALIZE_RUNTIME")
+    val currentRt = runtime
+    if (currentRt != null && _initState.value == GeckoInitState.READY) return currentRt
 
+    val currentDef = initDeferred
+    if (currentDef != null && currentDef.isCompleted) {
+      return currentRt ?: throw IllegalStateException("Runtime initialization previously completed with error")
+    }
+
+    return try {
+      _initState.value = GeckoInitState.INITIALIZING
+      val def = initDeferred ?: CompletableDeferred<GeckoRuntime>().also { initDeferred = it }
+      val rt = initializeRuntimeInternal()
+      def.complete(rt)
+      rt
+    } catch (e: Throwable) {
+      _initState.value = GeckoInitState.FAILED
+      initDeferred?.completeExceptionally(e)
+      throw e
+    }
+  }
+
+  private fun initializeRuntimeInternal(): GeckoRuntime {
+    assertMainThread("INITIALIZE_RUNTIME_INTERNAL")
+    if (runtime != null) {
+      _initState.value = GeckoInitState.READY
+      return runtime!!
+    }
+
+    val startTime = android.os.SystemClock.elapsedRealtime()
     Log.i(TAG, "Initializing GeckoRuntime with Process Isolation & WebRender...")
 
     // Clean up any stale config files
@@ -158,7 +235,10 @@ class GeckoEngineManager private constructor(private val context: Context) {
     }
 
     runtime = rt
+    _initState.value = GeckoInitState.READY
     applyPrivacyProfile(PrivacyProfile.SHIELD)
+    val duration = android.os.SystemClock.elapsedRealtime() - startTime
+    Log.i(TAG, "GeckoRuntime initialization completed in ${duration}ms (READY)")
     return rt
   }
 
@@ -265,7 +345,7 @@ class GeckoEngineManager private constructor(private val context: Context) {
     isDesktopMode: Boolean = false
   ): GeckoSession {
     assertMainThread("CREATE_SESSION")
-    val rt = runtime ?: initializeRuntime()
+    val rt = runtime ?: throw IllegalStateException("GeckoRuntime is not ready yet (state=${_initState.value}). Sessions must be created only after runtime readiness.")
     
     val isPrivateContainer = containerType != ContainerType.NORMAL || profile == PrivacyProfile.INCOGNITO || profile == PrivacyProfile.GHOST
     val settings = GeckoSessionSettings.Builder()
@@ -489,6 +569,10 @@ class GeckoEngineManager private constructor(private val context: Context) {
   ) = withContext(Dispatchers.Main.immediate) {
     assertMainThread("ATTACH_VIEW id=$tabId")
     sessionCallbacks[tabId] = callbacks
+    if (runtime == null || _initState.value != GeckoInitState.READY) {
+      Log.d(TAG, "[GECKO] attachView waiting for runtime readiness on tabId=$tabId")
+      ensureRuntimeInitialized()
+    }
     val session = getOrCreateSessionInternal(tabId, profile, securityLevel, containerType, isDesktopMode)
     try {
       session.setActive(true)
@@ -579,6 +663,11 @@ class GeckoEngineManager private constructor(private val context: Context) {
       return
     }
     assertMainThread("LOAD_URL id=$tabId")
+    if (runtime == null || _initState.value != GeckoInitState.READY) {
+      Log.d(TAG, "[GECKO] loadUrl runtime not ready yet, deferring 50ms for tabId=$tabId")
+      mainHandler.postDelayed({ loadUrl(tabId, targetUrl) }, 50)
+      return
+    }
     val session = activeSessions[tabId] ?: run {
       val profile = tab?.profile ?: currentProfile
       val secLevel = tab?.securityLevel ?: SecurityLevel.STANDARD

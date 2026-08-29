@@ -34,11 +34,10 @@ fun EmergencyWipeRecoveryScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val wipeState by PanicWipeManager.state.collectAsState()
-  val database = remember { RemmiDatabase.getDatabase(context) }
 
   // Automatically trigger resume on launch
   LaunchedEffect(Unit) {
-    PanicWipeManager.checkAndResumePendingWipe(context, database)
+    PanicWipeManager.checkAndResumePendingWipe(context)
   }
 
   Box(
@@ -239,7 +238,7 @@ fun EmergencyWipeRecoveryScreen(
               Button(
                 onClick = {
                   scope.launch {
-                    PanicWipeManager.executeWipe(context, database, wipeVault = false)
+                    PanicWipeManager.executeWipe(context, wipeVault = false)
                   }
                 },
                 colors = ButtonDefaults.buttonColors(

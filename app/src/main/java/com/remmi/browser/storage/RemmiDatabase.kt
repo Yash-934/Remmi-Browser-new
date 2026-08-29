@@ -19,7 +19,17 @@ import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import net.sqlcipher.database.SupportFactory
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -403,6 +413,12 @@ interface ReadingListDao {
   exportSchema = false,
 )
 abstract class RemmiDatabase : RoomDatabase() {
+  sealed class DatabaseState {
+    object Loading : DatabaseState()
+    data class Ready(val database: RemmiDatabase) : DatabaseState()
+    data class Error(val throwable: Throwable) : DatabaseState()
+  }
+
   abstract fun historyDao(): HistoryDao
   abstract fun bookmarkDao(): BookmarkDao
   abstract fun blockedEventDao(): BlockedEventDao
@@ -582,27 +598,53 @@ abstract class RemmiDatabase : RoomDatabase() {
       }
     }
 
-    data class PurgeResult(
-      val filesDeleted: Int,
-      val filesFailed: Int,
-      val keyRevoked: Boolean,
-      val vaultScrubSucceeded: Boolean = false,
-      val errors: List<String> = emptyList(),
-    )
+    private val _databaseState = MutableStateFlow<DatabaseState>(DatabaseState.Loading)
+    val databaseState: StateFlow<DatabaseState> = _databaseState.asStateFlow()
 
-    fun getDatabase(context: Context): RemmiDatabase {
-      return synchronized(this) {
-        if (isWipeActive) {
-          throw IllegalStateException("Cannot open database during an active Panic Wipe (state=$wipeState)")
+    private val initMutex = Mutex()
+    private val bootstrapScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    fun bootstrap(context: Context) {
+      val existing = INSTANCE
+      if (existing != null && existing.isOpen) {
+        _databaseState.value = DatabaseState.Ready(existing)
+        return
+      }
+      bootstrapScope.launch {
+        try {
+          val db = getDatabaseAsync(context.applicationContext)
+          _databaseState.value = DatabaseState.Ready(db)
+        } catch (t: Throwable) {
+          android.util.Log.e("RemmiDatabase", "Async DB bootstrap error: ${t.message}", t)
+          _databaseState.value = DatabaseState.Error(t)
         }
+      }
+    }
+
+    suspend fun getDatabaseAsync(context: Context): RemmiDatabase = withContext(Dispatchers.IO) {
+      if (isWipeActive) {
+        throw IllegalStateException("Cannot open database during an active Panic Wipe (state=$wipeState)")
+      }
+      val existing = INSTANCE
+      if (existing != null && existing.isOpen) {
+        if (_databaseState.value !is DatabaseState.Ready) {
+          _databaseState.value = DatabaseState.Ready(existing)
+        }
+        return@withContext existing
+      }
+      initMutex.withLock {
         var instance = INSTANCE
         if (instance != null && instance.isOpen) {
-          return@synchronized instance
+          if (_databaseState.value !is DatabaseState.Ready) {
+            _databaseState.value = DatabaseState.Ready(instance)
+          }
+          return@withLock instance
         }
+        val startTime = android.os.SystemClock.elapsedRealtime()
         try {
           net.sqlcipher.database.SQLiteDatabase.loadLibs(context.applicationContext)
         } catch (_: Throwable) {}
-        val passphrase = getOrCreatePassphrase(context)
+        val passphrase = getOrCreatePassphrase(context.applicationContext)
         val supportFactory = SupportFactory(passphrase, null, false)
         instance = Room.databaseBuilder(
           context.applicationContext,
@@ -614,6 +656,50 @@ abstract class RemmiDatabase : RoomDatabase() {
           .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
           .build()
         INSTANCE = instance
+        _databaseState.value = DatabaseState.Ready(instance)
+        val duration = android.os.SystemClock.elapsedRealtime() - startTime
+        android.util.Log.i("RemmiDatabase", "Asynchronous database initialization completed in ${duration}ms")
+        instance
+      }
+    }
+
+    data class PurgeResult(
+      val filesDeleted: Int,
+      val filesFailed: Int,
+      val keyRevoked: Boolean,
+      val vaultScrubSucceeded: Boolean = false,
+      val errors: List<String> = emptyList(),
+    )
+
+    fun getDatabase(context: Context): RemmiDatabase {
+      val existing = INSTANCE
+      if (existing != null && existing.isOpen) {
+        return existing
+      }
+      return synchronized(this) {
+        if (isWipeActive) {
+          throw IllegalStateException("Cannot open database during an active Panic Wipe (state=$wipeState)")
+        }
+        var instance = INSTANCE
+        if (instance != null && instance.isOpen) {
+          return@synchronized instance
+        }
+        try {
+          net.sqlcipher.database.SQLiteDatabase.loadLibs(context.applicationContext)
+        } catch (_: Throwable) {}
+        val passphrase = getOrCreatePassphrase(context.applicationContext)
+        val supportFactory = SupportFactory(passphrase, null, false)
+        instance = Room.databaseBuilder(
+          context.applicationContext,
+          RemmiDatabase::class.java,
+          "remmi_vault.db"
+        )
+          .openHelperFactory(supportFactory)
+          .fallbackToDestructiveMigration(false)
+          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+          .build()
+        INSTANCE = instance
+        _databaseState.value = DatabaseState.Ready(instance)
         instance
       }
     }
@@ -630,6 +716,7 @@ abstract class RemmiDatabase : RoomDatabase() {
             }
           } catch (_: Exception) {}
           INSTANCE = null
+          _databaseState.value = DatabaseState.Loading
         }
       }
     }

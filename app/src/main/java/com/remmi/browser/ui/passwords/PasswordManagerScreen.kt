@@ -1959,17 +1959,20 @@ private fun BackupRestoreDialog(
               if (!isProcessing) {
                 isProcessing = true
                 processingStatus = "Deriving Argon2id keys (AES-256-GCM)..."
-                scope.launch {
-                  val entities = com.remmi.browser.storage.RemmiDatabase.getDatabase(context).passwordEntryDao().getAllEntriesList()
+                scope.launch(Dispatchers.IO) {
+                  val db = com.remmi.browser.storage.RemmiDatabase.getDatabaseAsync(context)
+                  val entities = db.passwordEntryDao().getAllEntriesList()
                   val backupJson = PasswordBackupManager.exportEncryptedBackup(
                     entries = entities,
                     exportPassword = if (backupPassword.isNotBlank()) backupPassword.toCharArray() else null,
                     dek = dek
                   )
-                  isProcessing = false
-                  clipboard.copyWithAutoClear(backupJson, label = "Encrypted Vault Backup", clearAfterMs = 60000)
-                  Toast.makeText(context, "Encrypted backup copied to clipboard.", Toast.LENGTH_LONG).show()
-                  onDismiss()
+                  withContext(Dispatchers.Main) {
+                    isProcessing = false
+                    clipboard.copyWithAutoClear(backupJson, label = "Encrypted Vault Backup", clearAfterMs = 60000)
+                    Toast.makeText(context, "Encrypted backup copied to clipboard.", Toast.LENGTH_LONG).show()
+                    onDismiss()
+                  }
                 }
               }
             },

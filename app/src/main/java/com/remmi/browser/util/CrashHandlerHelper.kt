@@ -50,6 +50,10 @@ object CrashHandlerHelper {
     }
   }
 
+  suspend fun checkAndExportPendingCrashAsync(context: Context): CrashExportResult? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    checkAndExportPendingCrash(context)
+  }
+
   fun checkAndExportPendingCrash(context: Context): CrashExportResult? {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val report = prefs.getString(KEY_LAST_CRASH, null) ?: return null
