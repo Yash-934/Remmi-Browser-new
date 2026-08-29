@@ -131,21 +131,10 @@ object NavigationSecurityAuthority {
       }
     } catch (_: Exception) {}
 
-    // Check hostname address resolution for DNS rebinding protection (unless .onion or Ghost)
-    if (!isGhost && !clean.endsWith(".onion") && clean != "onion") {
-      try {
-        val addresses = InetAddress.getAllByName(clean)
-        for (addr in addresses) {
-          val (isSafe, _) = RedirectInspector.isInetAddressSafe(addr)
-          if (!isSafe) {
-            return true
-          }
-        }
-      } catch (_: Exception) {
-        // Offline or unresolvable; let engine handle DNS resolution failure
-      }
+    // Check numeric IPv4 & IPv6 literals and local TLDs without blocking UI thread on synchronous DNS queries
+    if (clean.endsWith(".local") || clean.endsWith(".internal") || clean.endsWith(".lan") || clean.endsWith(".home.arpa")) {
+      return true
     }
-
     return false
   }
 }

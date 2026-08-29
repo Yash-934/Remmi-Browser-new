@@ -74,13 +74,13 @@ class MainActivity : FragmentActivity() {
       else -> ScreenRoute.WELCOME
     }
 
-    // Initialize Gecko runtime asynchronously in background without blocking Main looper
+    // Initialize Gecko runtime asynchronously on Main looper without blocking initial frame layout
     if (!isPendingWipe) {
-      lifecycleScope.launch(Dispatchers.IO) {
+      lifecycleScope.launch(Dispatchers.Main) {
         try {
           com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntime()
         } catch (e: Throwable) {
-          android.util.Log.e("MainActivity", "Async GeckoEngine initialization error: ${e.message}", e)
+          android.util.Log.e("MainActivity", "GeckoEngine initialization error: ${e.message}", e)
         }
       }
     }

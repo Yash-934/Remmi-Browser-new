@@ -573,8 +573,23 @@ class GeckoEngineManager private constructor(private val context: Context) {
     if (host.isNotBlank()) {
       applySiteSecurityPolicy(tabId, host)
     }
-    onMainSession(tabId, "LOAD_URL") { session ->
+    
+    if (Looper.myLooper() != Looper.getMainLooper()) {
+      mainHandler.post { loadUrl(tabId, targetUrl) }
+      return
+    }
+    assertMainThread("LOAD_URL id=$tabId")
+    val session = activeSessions[tabId] ?: run {
+      val profile = tab?.profile ?: currentProfile
+      val secLevel = tab?.securityLevel ?: SecurityLevel.STANDARD
+      val container = tab?.containerType ?: ContainerType.fromProfile(profile)
+      val isDesktop = tab?.isDesktopMode ?: false
+      getOrCreateSessionInternal(tabId, profile, secLevel, container, isDesktop)
+    }
+    try {
       session.loadUri(targetUrl)
+    } catch (e: Exception) {
+      Log.w(TAG, "[GECKO] loadUrl error on tabId=$tabId: ${e.message}")
     }
   }
 
