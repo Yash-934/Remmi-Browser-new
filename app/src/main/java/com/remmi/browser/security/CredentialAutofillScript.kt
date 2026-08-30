@@ -19,6 +19,10 @@ object CredentialAutofillScript {
     return """
       (function() {
         try {
+          if (window !== window.top) {
+             console.error('Autofill blocked: Script must run in top-level context');
+             return;
+          }
           var u = $quotedUser;
           var p = $quotedPass;
           var inputs = document.querySelectorAll('input');

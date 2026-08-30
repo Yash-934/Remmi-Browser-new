@@ -1,5 +1,6 @@
 package com.remmi.browser.storage
 
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -546,12 +547,12 @@ abstract class RemmiDatabase : RoomDatabase() {
 
       try {
         if (!keyStore.containsAlias(KEY_ALIAS)) {
-          
+          generateMasterKey(keyStore)
         }
 
         var secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
         if (secretKey == null) {
-          throw IllegalStateException("Database encryption key was invalidated (RECOVERY REQUIRED).")
+          throw VaultRecoveryRequiredException("Database encryption key was invalidated (RECOVERY REQUIRED).")
           
           secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
             ?: throw SecurityException("Failed to retrieve master secret key from Android Keystore")
@@ -576,7 +577,7 @@ abstract class RemmiDatabase : RoomDatabase() {
               decryptionEx
             )
             // Keystore key was invalidated across OS update (Android 16/Vivo) or backup/restore
-            throw IllegalStateException("Database encryption key was invalidated (RECOVERY REQUIRED).")
+            throw VaultRecoveryRequiredException("Database encryption key was invalidated (RECOVERY REQUIRED).")
             
             
               
@@ -632,7 +633,7 @@ abstract class RemmiDatabase : RoomDatabase() {
         var d = initDeferred
         if (d == null) {
           val ctx = context.applicationContext
-          d = kotlinx.coroutines.GlobalScope.async(Dispatchers.IO) {
+          d = bootstrapScope.async(Dispatchers.IO) {
             val startTime = android.os.SystemClock.elapsedRealtime()
             try {
               net.sqlcipher.database.SQLiteDatabase.loadLibs(ctx)
@@ -807,3 +808,5 @@ abstract class RemmiDatabase : RoomDatabase() {
     }
   }
 }
+
+class VaultRecoveryRequiredException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)

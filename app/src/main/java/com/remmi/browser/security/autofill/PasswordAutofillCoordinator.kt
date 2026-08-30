@@ -112,7 +112,10 @@ class PasswordAutofillCoordinator(
       val matches = passwordRepo.findAutofillCredentialsForUrl(url)
       if (matches.isNotEmpty()) {
         _fillPrompt.value = FillPasswordPromptRequest(
-          origin = url,
+          origin = try {
+            val uri = java.net.URI(url)
+            "${uri.scheme}://${uri.host}${if (uri.port != -1) ":${uri.port}" else ""}"
+          } catch(e: Exception) { url },
           credentials = matches,
           onSelect = { selected ->
             onSelectCredential(selected.username, selected.password)

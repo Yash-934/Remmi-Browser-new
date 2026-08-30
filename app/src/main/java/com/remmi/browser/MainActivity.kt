@@ -41,7 +41,8 @@ enum class ScreenRoute {
   SETTINGS,
   PASSWORDS,
   DEBUG_LOGS,
-  EMERGENCY_RECOVERY
+  EMERGENCY_RECOVERY,
+  VAULT_RECOVERY
 }
 
 class MainActivity : FragmentActivity() {
@@ -133,9 +134,8 @@ class MainActivity : FragmentActivity() {
         androidx.compose.runtime.LaunchedEffect(dbState) {
           if (dbState is com.remmi.browser.storage.RemmiDatabase.DatabaseState.Error) {
              val err = (dbState as com.remmi.browser.storage.RemmiDatabase.DatabaseState.Error).throwable
-             if (err is IllegalStateException && err.message?.contains("RECOVERY REQUIRED") == true) {
-                 com.remmi.browser.security.PanicWipeManager.markWipeInProgress(this@MainActivity, wipeVault = true)
-                 currentScreen = ScreenRoute.EMERGENCY_RECOVERY
+             if (err is com.remmi.browser.storage.VaultRecoveryRequiredException) {
+                 currentScreen = ScreenRoute.VAULT_RECOVERY
              }
           }
         }
@@ -156,9 +156,16 @@ class MainActivity : FragmentActivity() {
             ScreenRoute.EMERGENCY_RECOVERY -> {
               com.remmi.browser.ui.screens.EmergencyWipeRecoveryScreen(
                 onRecoveryComplete = {
-                  // After successful verification, initialize runtime and proceed to Browser
                   com.remmi.browser.engine.GeckoEngineManager.getInstance(applicationContext).initializeRuntimeAsync()
                   currentScreen = ScreenRoute.BROWSER
+                }
+              )
+            }
+            ScreenRoute.VAULT_RECOVERY -> {
+              com.remmi.browser.ui.screens.VaultRecoveryScreen(
+                onProceedToWipe = {
+                  com.remmi.browser.security.PanicWipeManager.markWipeInProgress(this@MainActivity, wipeVault = true)
+                  currentScreen = ScreenRoute.EMERGENCY_RECOVERY
                 }
               )
             }

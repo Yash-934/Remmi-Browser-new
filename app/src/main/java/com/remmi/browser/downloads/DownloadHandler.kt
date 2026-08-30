@@ -1,4 +1,5 @@
 package com.remmi.browser.downloads
+import kotlinx.coroutines.cancelAndJoin
 
 import android.app.DownloadManager
 import android.app.NotificationChannel
@@ -425,8 +426,9 @@ class DownloadHandler(private val context: Context) {
     }
   }
 
-  fun cancelAllDownloads() {
-    activeJobs.values.forEach { it.cancel() }
+  suspend fun cancelAllDownloads() {
+    val jobs = activeJobs.values.toList()
+    jobs.forEach { it.cancelAndJoin() }
     activeJobs.clear()
     _activeDownloads.value = emptyMap()
   }

@@ -73,6 +73,11 @@ connectNative();
 // 1. Content Script Message Listener: Forward CLICK_INSPECTED -> native port -> BlockExtension
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message) return;
+  
+  // Validate sender context
+  if (!_sender || !_sender.tab || !_sender.tab.url || !_sender.tab.url.startsWith("http")) {
+      return;
+  }
 
   if (message.type === "CLICK_INSPECTED") {
     const payload = {
@@ -126,7 +131,10 @@ browser.webRequest.onBeforeRequest.addListener(
         return { cancel: true };
       }
     } catch (e) {
-      // Fallback if Native Messaging fails
+      // Fail-closed if Native Engine is unreachable for subresources
+      if (details.type !== "main_frame" && details.type !== "sub_frame") {
+         return { cancel: true };
+      }
     }
     
     return { cancel: false };

@@ -2359,7 +2359,12 @@ fun BrowserScreen(
                   .padding(vertical = 4.dp)
                   .clickable {
                     req.onSelect(cred)
-                    if (activeTab.url.startsWith(req.origin)) {
+                    val currentOrigin = try {
+                      val uri = java.net.URI(activeTab.url)
+                      "${uri.scheme}://${uri.host}${if (uri.port != -1) ":${uri.port}" else ""}"
+                    } catch(e: Exception) { activeTab.url }
+                    
+                    if (currentOrigin == req.origin) {
                       val jsAutofill = com.remmi.browser.security.CredentialAutofillScript.generateSafeAutofillScript(cred.username, cred.password)
                       geckoEngine.executeScript(activeTab.id, jsAutofill)
                       android.widget.Toast.makeText(context, "Autofilled credentials", android.widget.Toast.LENGTH_SHORT).show()
