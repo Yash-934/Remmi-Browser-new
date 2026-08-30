@@ -29,12 +29,12 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
 
   suspend fun getPreferences(keys: List<String>): Map<String, Any?> = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
     try {
-      NativePrefCtrl.getGeckoPrefs(keys.toTypedArray()).accept(
+      NativePrefCtrl.getGeckoPrefs(keys.toMutableList()).accept(
         { result ->
           if (cont.isActive) {
             val map = mutableMapOf<String, Any?>()
             result?.forEach { pref ->
-               map[pref.name] = pref.value
+               map[pref.pref] = pref.value
             }
             cont.resume(map)
           }
@@ -69,7 +69,7 @@ class GeckoPreferenceController(private val runtime: GeckoRuntime?) {
     }
 
     try {
-      NativePrefCtrl.setGeckoPrefs(setList.toTypedArray()).accept(
+      NativePrefCtrl.setGeckoPrefs(setList).accept(
         { result ->
           val resultMap = result as? Map<String, Boolean> ?: emptyMap()
           var total = 0
