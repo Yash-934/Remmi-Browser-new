@@ -35,6 +35,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
           if (CurrentTorRoute.isGhostActive) {
             Log.w(TAG, "Tor stopped unexpectedly while Ghost active. Invalidating route!")
             CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
           }
         }
       }
@@ -64,6 +65,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
       val error = torResult.exceptionOrNull() ?: Exception("Tor failed to initialize")
       Log.e(TAG, "Ghost Mode transition aborted: ${error.message}")
       CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
       DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=${error.message}")
       return@withContext Result.failure(error)
     }
@@ -73,6 +75,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
       if (discovered <= 0) {
         val err = IllegalStateException("SOCKS port discovery returned invalid port: $discovered")
         CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
         DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=port_unavailable")
         return@withContext Result.failure(err)
       }
@@ -85,15 +88,27 @@ class PrivacyNetworkController private constructor(private val context: Context)
     if (!handshakeOk) {
       val err = IllegalStateException("Tor SOCKS5 handshake verification failed on port $socksPort")
       CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
       DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=socks_handshake_failed")
       return@withContext Result.failure(err)
     }
 
+    val routingOk = TorStatusChecker.verifyTorRouting(socksPort)
+    if (!routingOk.isTor) {
+      val err = IllegalStateException("Tor exit verification failed on port $socksPort")
+      CurrentTorRoute.clearRoute()
+      DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=tor_exit_failed")
+      return@withContext Result.failure(err)
+    }
+    DebugLogManager.log("[ROUTE] TOR_EXIT_VERIFIED ip=${routingOk.ip}")
+
+    DebugLogManager.log("[ROUTE] SOCKS_VERIFIED port=$socksPort")
     // Step 4: Apply hardened Tor preferences directly to native GeckoView engine
     val proxyApplied = NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, socksPort, generation)
     if (!proxyApplied) {
       val err = IllegalStateException("Failed to apply Gecko native Tor proxy preferences")
       CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
       DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=gecko_proxy_failed")
       return@withContext Result.failure(err)
     }
@@ -118,10 +133,12 @@ class PrivacyNetworkController private constructor(private val context: Context)
     if (!geckoVerified) {
       val err = IllegalStateException("Gecko native Tor proxy verification failed (not routing through Tor)")
       CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
       DebugLogManager.log("[ROUTE] FAILED profile=GHOST reason=gecko_verification_failed")
       return@withContext Result.failure(err)
     }
 
+    DebugLogManager.log("[ROUTE] GEOCKO_ROUTE_VERIFIED")
     // Step 6: Advance route generation and update Single Source of Truth
     CurrentTorRoute.updateRoute(
       socksPort = socksPort,
@@ -147,12 +164,13 @@ class PrivacyNetworkController private constructor(private val context: Context)
    * 2. Clears SOCKS proxy from WebExtension & native Gecko engine.
    * 3. Stops Tor and updates all tabs to reflect the direct clearnet routing.
    */
-  suspend fun enterShieldMode(tabId: String) = withContext(Dispatchers.IO) {
+  suspend fun enterShieldMode(tabId: String): Unit = transitionMutex.withLock { withContext(Dispatchers.IO) {
     Log.i(TAG, "Entering Shield Mode for tab $tabId (restoring direct clearnet)...")
 
     geckoEngine.closeSessionSafely(tabId)
 
     val generation = CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
     DebugLogManager.log("[ROUTE] REQUESTED profile=SHIELD tabId=$tabId generation=$generation")
     torManager.stopTor()
     NetworkHardening.applyShieldNetworkSettings(geckoEngine.runtime, generation)
@@ -162,6 +180,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
     TabManager.getInstance().setAllTabsProfile(PrivacyProfile.SHIELD)
 
     DebugLogManager.log("[ROUTE] ACTIVE profile=SHIELD")
+  }
   }
 
   /**
@@ -173,6 +192,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
     
     if (result.isFailure) {
       CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
       return result
     }
     
@@ -181,6 +201,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
       val proxyApplied = NetworkHardening.applyTorNetworkSettings(geckoEngine.runtime, c.socksPort, generation)
       if (!proxyApplied) {
         CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
         return Result.failure(IllegalStateException("Failed to apply Gecko Tor proxy preferences on circuit rotation"))
       }
       
@@ -202,6 +223,7 @@ class PrivacyNetworkController private constructor(private val context: Context)
       
       if (!geckoVerified) {
         CurrentTorRoute.clearRoute()
+            NetworkHardening.resetAppliedState()
         return Result.failure(IllegalStateException("Gecko native Tor proxy verification failed on circuit rotation"))
       }
       
@@ -237,10 +259,10 @@ class PrivacyNetworkController private constructor(private val context: Context)
    * Checks if Ghost Mode is currently verified and ready.
    */
   fun isGhostRoutingReady(): Boolean {
-    val state = torManager.bootstrapState.value
-    return state is TorManager.TorState.READY &&
-      TorStatusChecker.isPortListening("127.0.0.1", state.port, 200) &&
-      CurrentTorRoute.isGhostActive
+    return CurrentTorRoute.isReady
+    
+      
+      
   }
 
   companion object {

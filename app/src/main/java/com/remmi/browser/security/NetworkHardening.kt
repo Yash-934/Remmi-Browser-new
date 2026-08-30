@@ -196,6 +196,7 @@ object NetworkHardening {
         return false
       }
 
+      DebugLogManager.log("[ROUTE] GEOCKO_PREF_READBACK_OK")
       lastAppliedRouteKey = targetKey
       DebugLogManager.log("[ROUTE] NATIVE_GECKO_APPLIED profile=GHOST port=$port")
     } else {
@@ -223,6 +224,7 @@ object NetworkHardening {
     val applied = prefController.applyPreferences(prefs, GeckoPreferenceController.PREF_BRANCH_USER)
 
     if (applied) {
+      DebugLogManager.log("[ROUTE] GEOCKO_PREF_READBACK_OK")
       lastAppliedRouteKey = targetKey
       DebugLogManager.log("[ROUTE] NATIVE_GECKO_APPLIED profile=SHIELD")
     } else {

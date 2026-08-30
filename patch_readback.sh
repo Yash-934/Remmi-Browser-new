@@ -1,0 +1,1 @@
+sed -i 's/      lastAppliedRouteKey = targetKey/      DebugLogManager.log("[ROUTE] GEOCKO_PREF_READBACK_OK")\n      lastAppliedRouteKey = targetKey/g' app/src/main/java/com/remmi/browser/security/NetworkHardening.kt
