@@ -242,7 +242,7 @@ fun BrowserScreen(
   // Check autofill on active tab URL change
   LaunchedEffect(activeTab.url) {
     if (activeTab.url.startsWith("https://", ignoreCase = true) && activeTab.url != "about:blank") {
-      autofillHelper.checkForAutofill(activeTab.url) { _, _ -> }
+      autofillHelper.checkForAutofill(activeTab.id, activeTab.url) { _, _ -> }
     }
   }
 
@@ -2364,12 +2364,12 @@ fun BrowserScreen(
                       "${uri.scheme}://${uri.host}${if (uri.port != -1) ":${uri.port}" else ""}"
                     } catch(e: Exception) { activeTab.url }
                     
-                    if (currentOrigin == req.origin) {
+                    if (currentOrigin == req.origin && activeTab.id == req.tabId) {
                       val jsAutofill = com.remmi.browser.security.CredentialAutofillScript.generateSafeAutofillScript(cred.username, cred.password)
                       geckoEngine.executeScript(activeTab.id, jsAutofill)
                       android.widget.Toast.makeText(context, "Autofilled credentials", android.widget.Toast.LENGTH_SHORT).show()
                     } else {
-                      android.widget.Toast.makeText(context, "Autofill aborted (Origin mismatch)", android.widget.Toast.LENGTH_SHORT).show()
+                      android.widget.Toast.makeText(context, "Autofill aborted (Origin/Tab mismatch)", android.widget.Toast.LENGTH_SHORT).show()
                     }
                   }
               ) {

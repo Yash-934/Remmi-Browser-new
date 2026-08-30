@@ -550,13 +550,8 @@ abstract class RemmiDatabase : RoomDatabase() {
           generateMasterKey(keyStore)
         }
 
-        var secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-        if (secretKey == null) {
-          throw VaultRecoveryRequiredException("Database encryption key was invalidated (RECOVERY REQUIRED).")
-          
-          secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-            ?: throw SecurityException("Failed to retrieve master secret key from Android Keystore")
-        }
+        val secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+          ?: throw VaultRecoveryRequiredException.MissingKeystoreKey("Database encryption key was invalidated (RECOVERY REQUIRED).")
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val encryptedPassphraseB64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
@@ -570,18 +565,12 @@ abstract class RemmiDatabase : RoomDatabase() {
             val gcmSpec = GCMParameterSpec(128, iv)
             cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
             return cipher.doFinal(encryptedData)
+          } catch (e: javax.crypto.AEADBadTagException) {
+            android.util.Log.e("RemmiDatabase", "Passphrase decryption failed: Auth Tag mismatch.", e)
+            throw VaultRecoveryRequiredException.AuthenticationTagMismatch("Database encryption key was invalidated (RECOVERY REQUIRED).", e)
           } catch (decryptionEx: Throwable) {
-            android.util.Log.e(
-              "RemmiDatabase",
-              "Passphrase decryption failed (${decryptionEx.message}). RECOVERY REQUIRED.",
-              decryptionEx
-            )
-            // Keystore key was invalidated across OS update (Android 16/Vivo) or backup/restore
-            throw VaultRecoveryRequiredException("Database encryption key was invalidated (RECOVERY REQUIRED).")
-            
-            
-              
-            
+            android.util.Log.e("RemmiDatabase", "Passphrase decryption failed (${decryptionEx.message}).", decryptionEx)
+            throw VaultRecoveryRequiredException.EncryptedPassphraseCorrupt("Database encryption key was invalidated (RECOVERY REQUIRED).", decryptionEx)
           }
         } else {
           return generateAndStoreNewPassphrase(prefs, secretKey)
@@ -809,4 +798,10 @@ abstract class RemmiDatabase : RoomDatabase() {
   }
 }
 
-class VaultRecoveryRequiredException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+sealed class VaultRecoveryRequiredException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause) {
+  class MissingKeystoreKey(message: String = "Missing Keystore Key", cause: Throwable? = null) : VaultRecoveryRequiredException(message, cause)
+  class KeystoreOperationFailed(message: String = "Keystore Operation Failed", cause: Throwable? = null) : VaultRecoveryRequiredException(message, cause)
+  class EncryptedPassphraseCorrupt(message: String = "Encrypted Passphrase Corrupt", cause: Throwable? = null) : VaultRecoveryRequiredException(message, cause)
+  class AuthenticationTagMismatch(message: String = "Authentication Tag Mismatch", cause: Throwable? = null) : VaultRecoveryRequiredException(message, cause)
+  class DatabaseCorrupt(message: String = "Database Corrupt", cause: Throwable? = null) : VaultRecoveryRequiredException(message, cause)
+}

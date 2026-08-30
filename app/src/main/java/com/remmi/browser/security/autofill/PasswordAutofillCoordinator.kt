@@ -20,6 +20,7 @@ data class SavePasswordPromptRequest(
 )
 
 data class FillPasswordPromptRequest(
+  val tabId: String,
   val origin: String,
   val credentials: List<DecryptedPasswordEntry>,
   val onSelect: (DecryptedPasswordEntry) -> Unit,
@@ -104,7 +105,7 @@ class PasswordAutofillCoordinator(
     )
   }
 
-  fun checkForAutofill(url: String, onSelectCredential: (username: String, password: String) -> Unit) {
+  fun checkForAutofill(tabId: String, url: String, onSelectCredential: (username: String, password: String) -> Unit) {
     if (!url.startsWith("https://", ignoreCase = true)) return
     if (passwordRepo.isFortKnoxInstalled()) return
 
@@ -112,6 +113,7 @@ class PasswordAutofillCoordinator(
       val matches = passwordRepo.findAutofillCredentialsForUrl(url)
       if (matches.isNotEmpty()) {
         _fillPrompt.value = FillPasswordPromptRequest(
+          tabId = tabId,
           origin = try {
             val uri = java.net.URI(url)
             "${uri.scheme}://${uri.host}${if (uri.port != -1) ":${uri.port}" else ""}"

@@ -162,8 +162,19 @@ class DownloadHandler(private val context: Context) {
 
     notificationManager.notify(notifId, notifBuilder.build())
 
-    val db = RemmiDatabase.getDatabaseAsync(context)
+    val MAX_DOWNLOAD_SIZE_BYTES = 5L * 1024L * 1024L * 1024L // 5GB Hard cap
+    if (contentLength > MAX_DOWNLOAD_SIZE_BYTES) {
+      val notif = NotificationCompat.Builder(context, CHANNEL_ID)
+          .setContentTitle("Download rejected: $fileName")
+          .setContentText("File exceeds 5GB limit.")
+          .setSmallIcon(android.R.drawable.stat_sys_warning)
+          .setAutoCancel(true).build()
+      notificationManager.notify(notifId, notif)
+      return
+    }
 
+    val db = RemmiDatabase.getDatabaseAsync(context)
+    var allocatedUri: android.net.Uri? = null
     try {
       db.downloadDao().insert(
         DownloadItem(
@@ -212,6 +223,7 @@ class DownloadHandler(private val context: Context) {
       } else {
         collection
       }
+      allocatedUri = targetUri
 
       var downloadedBytes = 0L
       val outStream: OutputStream = resolver.openOutputStream(targetUri)
@@ -226,12 +238,11 @@ class DownloadHandler(private val context: Context) {
 
             val MAX_DOWNLOAD_SIZE_BYTES = 5L * 1024L * 1024L * 1024L // 5GB Hard cap
             while (bytesRead >= 0) {
-              output.write(buffer, 0, bytesRead)
-              downloadedBytes += bytesRead
-              
-              if (downloadedBytes > MAX_DOWNLOAD_SIZE_BYTES) {
+              if (downloadedBytes + bytesRead > MAX_DOWNLOAD_SIZE_BYTES) {
                   throw java.io.IOException("Download exceeded hard cap of 5GB. Terminated to prevent storage exhaustion.")
               }
+              output.write(buffer, 0, bytesRead)
+              downloadedBytes += bytesRead
 
               val now = System.currentTimeMillis()
               if (now - lastUpdateMs > 350) {
@@ -342,6 +353,16 @@ class DownloadHandler(private val context: Context) {
 
     } catch (e: Exception) {
       Log.e(TAG, "Download failed for $fileName", e)
+      
+      // Cleanup partial/failed download from MediaStore
+      try {
+        allocatedUri?.let { uri ->
+          context.contentResolver.delete(uri, null, null)
+        }
+      } catch (cleanupEx: Exception) {
+        Log.e(TAG, "Failed to clean up partial download", cleanupEx)
+      }
+      
       activeJobs.remove(downloadId)
 
       val errorNotif = NotificationCompat.Builder(context, CHANNEL_ID)

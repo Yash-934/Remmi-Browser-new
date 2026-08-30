@@ -50,7 +50,11 @@ function connectNative() {
           browser.tabs.executeScript(tabId, {
             code: "document.documentElement.outerHTML;"
           }).then((res) => {
-            const html = (res && res[0]) ? res[0] : "";
+            let html = (res && res[0]) ? res[0] : "";
+            const MAX_HTML_BYTES = 2 * 1024 * 1024; // 2MB limit for bridge
+            if (html.length > MAX_HTML_BYTES) {
+               html = html.substring(0, MAX_HTML_BYTES) + "<!-- Truncated by Remmi Native Bridge -->";
+            }
             if (port) port.postMessage({ type: "EXTRACTED_HTML", html: html, url: "", requestId: requestId, tabId: tabId });
           }).catch(e => {
             if (port) port.postMessage({ type: "EXTRACTED_HTML", html: "", url: "", requestId: requestId, tabId: tabId });
@@ -131,9 +135,16 @@ browser.webRequest.onBeforeRequest.addListener(
         return { cancel: true };
       }
     } catch (e) {
-      // Fail-closed if Native Engine is unreachable for subresources
-      if (details.type !== "main_frame" && details.type !== "sub_frame") {
+      // Fail-closed if Native Engine is unreachable
+      if (details.incognito) {
+         // In Ghost (Incognito) mode, strict fail-closed for ALL network requests if blocker is offline
          return { cancel: true };
+      } else {
+         // In standard modes, fail-closed for subresources to prevent tracking leaks, 
+         // but allow main_frame so browsing doesn't completely break
+         if (details.type !== "main_frame" && details.type !== "sub_frame") {
+            return { cancel: true };
+         }
       }
     }
     

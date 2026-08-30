@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.remmi.browser.ui.theme.ThemeCyber
 
+import kotlin.system.exitProcess
+
 @Composable
 fun VaultRecoveryScreen(
   onProceedToWipe: () -> Unit
@@ -51,7 +53,7 @@ fun VaultRecoveryScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-          text = "VAULT RECOVERY REQUIRED",
+          text = "VAULT UNAVAILABLE",
           fontFamily = ThemeCyber.fontFamily,
           fontWeight = FontWeight.Bold,
           fontSize = 16.sp,
@@ -60,13 +62,55 @@ fun VaultRecoveryScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-          text = "Your encrypted vault cannot currently be opened (Key Invalidated). This can happen after OS updates or device restores. Resetting the vault will permanently delete saved credentials.",
+          text = "Your encrypted vault could not be opened. We could not safely recover it on this device.",
           fontSize = 13.sp,
           color = ThemeCyber.colors.textMuted,
           textAlign = TextAlign.Center,
           lineHeight = 18.sp
         )
         Spacer(modifier = Modifier.height(24.dp))
+        
+        OutlinedButton(
+          onClick = { exitProcess(0) },
+          colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = ThemeCyber.colors.textPrimary
+          ),
+          border = BorderStroke(1.dp, ThemeCyber.colors.surfaceBorder),
+          shape = RoundedCornerShape(12.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+        ) {
+          Text(
+            text = "TRY AGAIN",
+            fontWeight = FontWeight.Bold,
+            fontFamily = ThemeCyber.fontFamily,
+            fontSize = 13.sp
+          )
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Button(
+          onClick = { /* TODO: Implement Backup Restore */ },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = ThemeCyber.colors.surfaceLight,
+            contentColor = ThemeCyber.colors.textPrimary
+          ),
+          shape = RoundedCornerShape(12.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+        ) {
+          Text(
+            text = "RESTORE BACKUP",
+            fontWeight = FontWeight.Bold,
+            fontFamily = ThemeCyber.fontFamily,
+            fontSize = 13.sp
+          )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
         
         Button(
           onClick = onProceedToWipe,
@@ -80,7 +124,7 @@ fun VaultRecoveryScreen(
             .height(46.dp)
         ) {
           Text(
-            text = "RESET VAULT & CONTINUE",
+            text = "RESET VAULT",
             fontWeight = FontWeight.Bold,
             fontFamily = ThemeCyber.fontFamily,
             fontSize = 13.sp
