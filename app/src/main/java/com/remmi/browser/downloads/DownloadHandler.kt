@@ -223,9 +223,14 @@ class DownloadHandler(private val context: Context) {
             var bytesRead = input.read(buffer)
             var lastUpdateMs = System.currentTimeMillis()
 
+            val MAX_DOWNLOAD_SIZE_BYTES = 5L * 1024L * 1024L * 1024L // 5GB Hard cap
             while (bytesRead >= 0) {
               output.write(buffer, 0, bytesRead)
               downloadedBytes += bytesRead
+              
+              if (downloadedBytes > MAX_DOWNLOAD_SIZE_BYTES) {
+                  throw java.io.IOException("Download exceeded hard cap of 5GB. Terminated to prevent storage exhaustion.")
+              }
 
               val now = System.currentTimeMillis()
               if (now - lastUpdateMs > 350) {
@@ -418,6 +423,12 @@ class DownloadHandler(private val context: Context) {
       "doc", "docx" -> "application/msword"
       else -> "application/octet-stream"
     }
+  }
+
+  fun cancelAllDownloads() {
+    activeJobs.values.forEach { it.cancel() }
+    activeJobs.clear()
+    _activeDownloads.value = emptyMap()
   }
 
   companion object {

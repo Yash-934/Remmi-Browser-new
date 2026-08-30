@@ -128,6 +128,17 @@ class MainActivity : FragmentActivity() {
         var currentScreen by remember {
           mutableStateOf(initialScreen)
         }
+        
+        val dbState by com.remmi.browser.storage.RemmiDatabase.databaseState.collectAsState()
+        androidx.compose.runtime.LaunchedEffect(dbState) {
+          if (dbState is com.remmi.browser.storage.RemmiDatabase.DatabaseState.Error) {
+             val err = (dbState as com.remmi.browser.storage.RemmiDatabase.DatabaseState.Error).throwable
+             if (err is IllegalStateException && err.message?.contains("RECOVERY REQUIRED") == true) {
+                 com.remmi.browser.security.PanicWipeManager.markWipeInProgress(this@MainActivity, wipeVault = true)
+                 currentScreen = ScreenRoute.EMERGENCY_RECOVERY
+             }
+          }
+        }
 
         if (crashResultToShow != null) {
           CrashReportDialog(

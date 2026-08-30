@@ -31,7 +31,7 @@ data class FillPasswordPromptRequest(
  * Enforces strict HTTPS verification, zero clearnet leaks, Fort Knox priority triage,
  * and zero-compromise credential security.
  */
-class PasswordAutofillHelper(
+class PasswordAutofillCoordinator(
   private val context: Context,
   private val scope: CoroutineScope,
   private val passwordRepo: PasswordManagerRepository,
@@ -47,7 +47,7 @@ class PasswordAutofillHelper(
   val showFortKnoxNotice: StateFlow<Boolean> = _showFortKnoxNotice.asStateFlow()
 
   companion object {
-    private const val TAG = "PasswordAutofillHelper"
+    private const val TAG = "PasswordAutofillCoordinator"
   }
 
   init {

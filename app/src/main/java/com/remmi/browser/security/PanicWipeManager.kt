@@ -94,7 +94,7 @@ object PanicWipeManager {
     return@withContext executeWipe(context, database, wipeVault)
   }
 
-  private fun markWipeInProgress(context: Context, wipeVault: Boolean) {
+  internal fun markWipeInProgress(context: Context, wipeVault: Boolean) {
     try {
       context.getSharedPreferences(PREFS_RECOVERY, Context.MODE_PRIVATE)
         .edit()
@@ -134,6 +134,18 @@ object PanicWipeManager {
 
     try {
       val geckoEngine = GeckoEngineManager.getInstance(context)
+      
+      // Stop background jobs
+      try {
+          com.remmi.browser.downloads.DownloadHandler.getInstance(context).cancelAllDownloads()
+      } catch(e: Exception) {
+          Log.w(TAG, "Failed to cancel downloads: ${e.message}")
+      }
+      try {
+          com.remmi.browser.security.TorManager.getInstance(context).stopTor()
+      } catch(e: Exception) {
+          Log.w(TAG, "Failed to stop Tor: ${e.message}")
+      }
 
       // Step 1: DESTROY_SESSIONS (Atomic session, delegate, and tab destruction)
       _state.value = PanicWipeState.InProgress(

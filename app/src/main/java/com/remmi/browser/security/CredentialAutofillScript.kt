@@ -2,7 +2,7 @@ package com.remmi.browser.security
 
 import org.json.JSONObject
 
-object PasswordAutofillHelper {
+object CredentialAutofillScript {
 
   /**
    * Generates a safe JavaScript snippet to autofill username and password fields

@@ -115,7 +115,6 @@ import com.remmi.browser.ui.components.BrowserView
 import com.remmi.browser.ui.components.CyberpunkBackground
 import com.remmi.browser.model.WebContextMenuData
 import com.remmi.browser.downloads.DownloadHandler
-import com.remmi.browser.ui.components.AiImageAssistantSheet
 import com.remmi.browser.ui.components.CircuitVisualizerSheet
 import com.remmi.browser.ui.components.DownloadsDrawer
 import com.remmi.browser.ui.components.FindInPageBar
@@ -170,7 +169,7 @@ fun BrowserScreen(
   val clipboardMgr = remember { ClipboardManager(context) }
   val settingsRepo = remember { SettingsRepository.getInstance(context) }
   val passwordRepo = remember { com.remmi.browser.security.PasswordManagerRepository.getInstance(context) }
-  val autofillHelper = remember { com.remmi.browser.security.autofill.PasswordAutofillHelper(context, scope, passwordRepo) }
+  val autofillHelper = remember { com.remmi.browser.security.autofill.PasswordAutofillCoordinator(context, scope, passwordRepo) }
   val sitePolicyManager = remember { com.remmi.browser.security.SiteSecurityPolicyManager.getInstance(context) }
 
   val tabs by tabManager.tabs.collectAsState()
@@ -251,7 +250,6 @@ fun BrowserScreen(
   var activeContextMenuData by remember { mutableStateOf<WebContextMenuData?>(null) }
   var pagePreviewData by remember { mutableStateOf<Pair<String, String>?>(null) }
   var imagePreviewData by remember { mutableStateOf<Pair<String, String>?>(null) }
-  var aiImageAssistantData by remember { mutableStateOf<Pair<String, String>?>(null) }
 
   // Find in page state
   var isFindInPageActive by remember { mutableStateOf(false) }
@@ -454,8 +452,6 @@ fun BrowserScreen(
       pagePreviewData = null
     } else if (imagePreviewData != null) {
       imagePreviewData = null
-    } else if (aiImageAssistantData != null) {
-      aiImageAssistantData = null
     } else if (isFullScreenMode) {
       isFullScreenMode = false
     } else if (showMenuDropdown) {
@@ -1970,7 +1966,6 @@ fun BrowserScreen(
         imagePreviewData = Pair(imgUrl, title)
       },
       onAskAiAboutImage = { imgUrl, title ->
-        aiImageAssistantData = Pair(imgUrl, title)
       },
       onCopyLinkAddress = { url ->
         clipboardMgr.copyWithAutoClear(url)
@@ -2141,19 +2136,6 @@ fun BrowserScreen(
       onOpenInTab = { url ->
         imagePreviewData = null
         tabManager.openTab(url = url, profile = activeTab.profile, isDesktop = settings.defaultDesktopMode)
-      }
-    )
-  }
-
-  // 9. AI Image Assistant / Copilot Sheet
-  aiImageAssistantData?.let { (imgUrl, title) ->
-    AiImageAssistantSheet(
-      imageUrl = imgUrl,
-      imageTitle = title,
-      onDismiss = { aiImageAssistantData = null },
-      onSearchWeb = { url ->
-        val searchUrl = "https://www.bing.com/images/search?q=imgurl:${URLEncoder.encode(url, "UTF-8")}&view=detailv2"
-        tabManager.openTab(url = searchUrl, profile = activeTab.profile, isDesktop = settings.defaultDesktopMode)
       }
     )
   }
@@ -2377,9 +2359,13 @@ fun BrowserScreen(
                   .padding(vertical = 4.dp)
                   .clickable {
                     req.onSelect(cred)
-                    val jsAutofill = com.remmi.browser.security.PasswordAutofillHelper.generateSafeAutofillScript(cred.username, cred.password)
-                    geckoEngine.executeScript(activeTab.id, jsAutofill)
-                    android.widget.Toast.makeText(context, "Autofilled credentials", android.widget.Toast.LENGTH_SHORT).show()
+                    if (activeTab.url.startsWith(req.origin)) {
+                      val jsAutofill = com.remmi.browser.security.CredentialAutofillScript.generateSafeAutofillScript(cred.username, cred.password)
+                      geckoEngine.executeScript(activeTab.id, jsAutofill)
+                      android.widget.Toast.makeText(context, "Autofilled credentials", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                      android.widget.Toast.makeText(context, "Autofill aborted (Origin mismatch)", android.widget.Toast.LENGTH_SHORT).show()
+                    }
                   }
               ) {
                 Row(
@@ -2408,4 +2394,5 @@ fun BrowserScreen(
   }
 }
 }
+
 

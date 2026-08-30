@@ -546,13 +546,13 @@ abstract class RemmiDatabase : RoomDatabase() {
 
       try {
         if (!keyStore.containsAlias(KEY_ALIAS)) {
-          generateMasterKey(keyStore)
+          
         }
 
         var secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
         if (secretKey == null) {
-          try { keyStore.deleteEntry(KEY_ALIAS) } catch (_: Throwable) {}
-          generateMasterKey(keyStore)
+          throw IllegalStateException("Database encryption key was invalidated (RECOVERY REQUIRED).")
+          
           secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
             ?: throw SecurityException("Failed to retrieve master secret key from Android Keystore")
         }
@@ -570,17 +570,17 @@ abstract class RemmiDatabase : RoomDatabase() {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
             return cipher.doFinal(encryptedData)
           } catch (decryptionEx: Throwable) {
-            android.util.Log.w(
+            android.util.Log.e(
               "RemmiDatabase",
-              "Passphrase decryption failed (${decryptionEx.message}). Regenerating master key after invalidation...",
+              "Passphrase decryption failed (${decryptionEx.message}). RECOVERY REQUIRED.",
               decryptionEx
             )
             // Keystore key was invalidated across OS update (Android 16/Vivo) or backup/restore
-            try { keyStore.deleteEntry(KEY_ALIAS) } catch (_: Throwable) {}
-            generateMasterKey(keyStore)
-            val regeneratedKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-              ?: throw SecurityException("Failed to regenerate master secret key", decryptionEx)
-            return generateAndStoreNewPassphrase(prefs, regeneratedKey)
+            throw IllegalStateException("Database encryption key was invalidated (RECOVERY REQUIRED).")
+            
+            
+              
+            
           }
         } else {
           return generateAndStoreNewPassphrase(prefs, secretKey)
